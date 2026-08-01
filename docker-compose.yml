@@ -1,0 +1,72 @@
+services:
+  crawler:
+    build: ./crawler      # 使用自定义镜像
+    container_name: crawler_rainbowow
+    volumes:
+      - ./crawler:/app     # 挂载代码目录
+    working_dir: /app
+    command: ["sleep", "infinity"]
+    depends_on:
+      - redis
+      - mongodb
+    environment:
+      - DISPLAY=:99
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USER=root
+      - MONGO_PASS=${MONGO_PASS:-114515}
+      - REDIS_HOST=redis         
+      - REDIS_PORT=6379           
+      - TZ=Asia/Shanghai
+    networks:
+      - rainbow_net
+
+  cli:
+    build: ./cli      # 使用自定义镜像
+    container_name: cli_rainbowow
+    volumes:
+      - ./cli:/app     # 挂载代码目录
+    working_dir: /app
+    command: ["sleep", "infinity"]
+    depends_on:
+      - redis
+      - mongodb
+    environment:
+      - DISPLAY=:99
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USER=root
+      - MONGO_PASS=${MONGO_PASS:-114515}
+      - REDIS_HOST=redis         
+      - REDIS_PORT=6379           
+      - TZ=Asia/Shanghai
+    networks:
+      - rainbow_net
+    
+  redis:
+    image: redis:7-alpine
+    container_name: redis_rainbowow
+    ports:
+      - "6379:6379"               # 可选，暴露给宿主机
+    volumes:
+      - ./data/redis:/data        # Redis 持久化
+    command: redis-server --appendonly yes
+    networks:
+      - rainbow_net
+
+  mongodb:
+    image: mongo:8
+    container_name: mongo_rainbowow
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./data/mongo:/data/db     # MongoDB 数据持久化
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASS:-114515}
+    networks:
+      - rainbow_net
+
+networks:
+  rainbow_net:
+    driver: bridge

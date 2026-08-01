@@ -1,0 +1,27 @@
+# --- 隐私: 本地数据 (MongoDB / Redis) ---
+data/
+
+# --- 隐私: 日志与截图 ---
+crawler/log/
+
+# --- 隐私: 浏览器用户数据 (含 Cookie / 登录态) ---
+crawler/xhs_*/
+crawler/login.png
+
+# --- 隐私: 环境变量文件 (含密码/密钥) ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- 系统 / 编辑器 ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
