@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rainbow Crawler Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">R</span>
+      <div>
+        <strong>Rainbow</strong>
+        <span>Crawler Console</span>
+      </div>
+    </div>
+    <div class="connection"><span id="healthDot" class="health-dot"></span><span id="healthText">正在连接</span></div>
+  </header>
+
+  <main>
+    <section class="summary" aria-label="运行概览">
+      <div><span>爬虫总数</span><strong id="totalCount">0</strong></div>
+      <div><span>运行中</span><strong id="runningCount">0</strong></div>
+      <div><span>空闲</span><strong id="idleCount">0</strong></div>
+      <button id="createButton" class="primary-button" type="button"><span>+</span> 新建爬虫</button>
+    </section>
+
+    <div class="workspace">
+      <section class="crawler-panel">
+        <div class="section-heading">
+          <div><span class="eyebrow">FLEET</span><h1>爬虫实例</h1></div>
+          <button id="refreshButton" class="icon-button" type="button" title="刷新" aria-label="刷新">↻</button>
+        </div>
+        <div id="crawlerList" class="crawler-list"></div>
+        <div id="emptyState" class="empty-state" hidden>
+          <strong>还没有爬虫</strong>
+          <span>创建第一个实例开始工作。</span>
+        </div>
+      </section>
+
+      <section class="activity-panel">
+        <div class="section-heading activity-heading">
+          <div><span class="eyebrow">ACTIVITY</span><h2>实时日志</h2></div>
+          <select id="logFilter" aria-label="筛选爬虫日志"><option value="">全部爬虫</option></select>
+        </div>
+        <div id="logList" class="log-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="createDialog">
+    <form id="createForm" method="dialog">
+      <div class="dialog-heading"><div><span class="eyebrow">NEW INSTANCE</span><h2>新建爬虫</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
+      <label>爬虫 ID<input name="crawler_id" required maxlength="64" placeholder="例如 xhs_TEL7236"></label>
+      <label>用户数据目录<input name="user_data_dir" required maxlength="256" placeholder="例如 xhs_TEL7236"></label>
+      <label>图片策略<select name="image_strategy"><option value="None">None</option><option value="Download">Download</option></select></label>
+      <p id="createError" class="form-error"></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button id="submitCreate" type="submit" value="default" class="primary-button">创建实例</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="gotoDialog">
+    <form id="gotoForm" method="dialog">
+      <div class="dialog-heading"><div><span class="eyebrow">NAVIGATE</span><h2>跳转页面</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
+      <input type="hidden" name="crawler_id">
+      <label>目标 URL<input name="url" type="url" required placeholder="https://www.xiaohongshu.com/explore"></label>
+      <p id="gotoError" class="form-error"></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button type="submit" value="default" class="primary-button">发送动作</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -42,12 +42,32 @@ services:
       - TZ=Asia/Shanghai
     networks:
       - rainbow_net
+
+  webui:
+    build: ./webui
+    container_name: webui_rainbowow
+    ports:
+      - "8600:8000"
+    depends_on:
+      - redis
+      - mongodb
+    environment:
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USER=root
+      - MONGO_PASS=${MONGO_PASS:-114515}
+      - MONGO_DB=rainbow1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TZ=Asia/Shanghai
+    networks:
+      - rainbow_net
     
   redis:
     image: redis:7-alpine
     container_name: redis_rainbowow
     ports:
-      - "6379:6379"               # 可选，暴露给宿主机
+      - "6390:6379"               # 可选，暴露给宿主机
     volumes:
       - ./data/redis:/data        # Redis 持久化
     command: redis-server --appendonly yes

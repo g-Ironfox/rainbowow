@@ -8,6 +8,7 @@
 | --------- | ------------------------------------------ |
 | `crawler` | Camoufox 浏览器爬虫 (headless="virtual" + Xvfb 虚拟显示), 阻塞消费任务队列  |
 | `cli`     | 基于 Typer + Rich 的爬虫管理命令行工具     |
+| `webui`   | 浏览器管理控制台，提供实例控制、动作投递和实时日志 |
 | `redis`   | 任务队列 / 心跳 (Redis 7)                  |
 | `mongodb` | 数据存储 (MongoDB 8)                       |
 
@@ -20,6 +21,8 @@ cp .env.example .env
 # 2. 构建并启动
 docker compose up -d --build
 ```
+
+启动后访问 <http://localhost:8000>。WebUI 支持创建和查看爬虫、启动/停止实例、跳转页面、抓取首页以及查看实时日志。
 
 ## CLI 使用
 
@@ -41,6 +44,7 @@ docker compose exec cli python cli.py terminate <crawler_id>
 │   ├── getCookie.py    # 扫码登录获取 Cookie
 │   └── db.py           # MongoDB / Redis 客户端
 ├── cli/                # 管理 CLI
+├── webui/              # FastAPI 管理界面
 ├── data/               # MongoDB / Redis 数据 (不提交)
 └── docker-compose.yml
 ```
