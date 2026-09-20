@@ -22,6 +22,10 @@ const elements = {
   lastRefresh: document.querySelector("#lastRefresh"),
   refreshState: document.querySelector("#refreshState"),
   refreshInterval: document.querySelector("#refreshInterval"),
+  refreshIntervalPicker: document.querySelector("#refreshIntervalPicker"),
+  refreshIntervalButton: document.querySelector("#refreshIntervalButton"),
+  refreshIntervalValue: document.querySelector("#refreshIntervalValue"),
+  refreshIntervalMenu: document.querySelector("#refreshIntervalMenu"),
   pauseButton: document.querySelector("#pauseButton"),
   refreshButton: document.querySelector("#refreshButton"),
   crawlerDialog: document.querySelector("#crawlerDialog"),
@@ -30,6 +34,7 @@ const elements = {
   crawlerDialogEyebrow: document.querySelector("#crawlerDialogEyebrow"),
   crawlerDialogTitle: document.querySelector("#crawlerDialogTitle"),
   submitCrawler: document.querySelector("#submitCrawler"),
+  deleteCrawler: document.querySelector("#deleteCrawler"),
   gotoDialog: document.querySelector("#gotoDialog"),
   gotoForm: document.querySelector("#gotoForm"),
   gotoError: document.querySelector("#gotoError"),
@@ -66,6 +71,14 @@ function formatTime(timestamp) {
   return new Date(timestamp * 1000).toLocaleTimeString("zh-CN", { hour12: false });
 }
 
+function closeCrawlerActionMenus() {
+  elements.crawlerList.querySelectorAll(".action-menu.open").forEach(menu => {
+    menu.classList.remove("open");
+    menu.querySelector(".action-menu-trigger").setAttribute("aria-expanded", "false");
+    menu.querySelector(".action-menu-list").hidden = true;
+  });
+}
+
 function renderCrawlers() {
   elements.totalCount.textContent = state.crawlers.length;
   elements.runningCount.textContent = state.crawlers.filter(item => item.status === "running").length;
@@ -90,9 +103,14 @@ function renderCrawlers() {
           <button class="action-button" data-action="edit" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "disabled" : ""}>编辑</button>
           <button class="action-button" data-action="launch" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "disabled" : ""}>启动</button>
           <button class="action-button danger" data-action="terminate" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>停止</button>
-          <button class="action-button" data-action="goto" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>跳转</button>
-          <button class="action-button" data-action="surface" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>抓取首页</button>
-          <button class="action-button" data-action="screenshot" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>截屏</button>
+          <div class="action-menu">
+            <button class="action-button action-menu-trigger" type="button" data-menu-toggle aria-haspopup="menu" aria-expanded="false" ${active ? "" : "disabled"}>操作<span class="action-menu-chevron" aria-hidden="true"></span></button>
+            <div class="action-menu-list" role="menu" hidden>
+              <button type="button" role="menuitem" data-action="goto" data-id="${escapeHtml(crawler.crawler_id)}">跳转</button>
+              <button type="button" role="menuitem" data-action="surface" data-id="${escapeHtml(crawler.crawler_id)}">抓取首页</button>
+              <button type="button" role="menuitem" data-action="screenshot" data-id="${escapeHtml(crawler.crawler_id)}">截屏</button>
+            </div>
+          </div>
         </div>
       </article>`;
   }).join("");
@@ -160,8 +178,21 @@ async function loadData(silent = false) {
 }
 
 elements.crawlerList.addEventListener("click", async event => {
+  const menuTrigger = event.target.closest("button[data-menu-toggle]");
+  if (menuTrigger) {
+    const menu = menuTrigger.closest(".action-menu");
+    const shouldOpen = !menu.classList.contains("open");
+    closeCrawlerActionMenus();
+    if (shouldOpen) {
+      menu.classList.add("open");
+      menuTrigger.setAttribute("aria-expanded", "true");
+      menu.querySelector(".action-menu-list").hidden = false;
+    }
+    return;
+  }
   const button = event.target.closest("button[data-action]");
   if (!button) return;
+  closeCrawlerActionMenus();
   const { action, id } = button.dataset;
   if (action === "edit") {
     const crawler = state.crawlers.find(item => item.crawler_id === id);
@@ -178,6 +209,7 @@ elements.crawlerList.addEventListener("click", async event => {
     elements.crawlerDialogEyebrow.textContent = "EDIT INSTANCE";
     elements.crawlerDialogTitle.textContent = "编辑爬虫";
     elements.submitCrawler.textContent = "保存修改";
+    elements.deleteCrawler.hidden = false;
     elements.createError.textContent = "";
     elements.crawlerDialog.showModal();
     return;
@@ -208,6 +240,7 @@ document.querySelector("#createButton").addEventListener("click", () => {
   elements.crawlerDialogEyebrow.textContent = "NEW INSTANCE";
   elements.crawlerDialogTitle.textContent = "新建爬虫";
   elements.submitCrawler.textContent = "创建实例";
+  elements.deleteCrawler.hidden = true;
   elements.createError.textContent = "";
   elements.crawlerDialog.showModal();
 });
@@ -216,7 +249,57 @@ elements.refreshButton.addEventListener("click", async () => {
   await loadData();
   scheduleAutoRefresh();
 });
-elements.refreshInterval.addEventListener("change", scheduleAutoRefresh);
+function closeRefreshIntervalMenu({ restoreFocus = false } = {}) {
+  elements.refreshIntervalPicker.classList.remove("open");
+  elements.refreshIntervalButton.setAttribute("aria-expanded", "false");
+  elements.refreshIntervalMenu.hidden = true;
+  if (restoreFocus) elements.refreshIntervalButton.focus();
+}
+
+function openRefreshIntervalMenu() {
+  elements.refreshIntervalPicker.classList.add("open");
+  elements.refreshIntervalButton.setAttribute("aria-expanded", "true");
+  elements.refreshIntervalMenu.hidden = false;
+  elements.refreshIntervalMenu.querySelector('[aria-selected="true"]').focus();
+}
+
+elements.refreshIntervalButton.addEventListener("click", () => {
+  if (elements.refreshIntervalMenu.hidden) openRefreshIntervalMenu();
+  else closeRefreshIntervalMenu();
+});
+elements.refreshIntervalMenu.addEventListener("click", event => {
+  const option = event.target.closest("button[role=option]");
+  if (!option) return;
+  elements.refreshInterval.value = option.dataset.value;
+  elements.refreshIntervalValue.textContent = option.textContent;
+  elements.refreshIntervalButton.setAttribute("aria-label", `自动刷新间隔，当前 ${option.textContent.replace("s", " 秒")}`);
+  elements.refreshIntervalMenu.querySelectorAll("button").forEach(button => {
+    button.setAttribute("aria-selected", String(button === option));
+  });
+  closeRefreshIntervalMenu({ restoreFocus: true });
+  scheduleAutoRefresh();
+});
+elements.refreshIntervalPicker.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !elements.refreshIntervalMenu.hidden) {
+    event.preventDefault();
+    closeRefreshIntervalMenu({ restoreFocus: true });
+    return;
+  }
+  if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  if (elements.refreshIntervalMenu.hidden) {
+    openRefreshIntervalMenu();
+    return;
+  }
+  const options = [...elements.refreshIntervalMenu.querySelectorAll("button")];
+  const offset = event.key === "ArrowDown" ? 1 : -1;
+  const currentIndex = options.indexOf(document.activeElement);
+  options[(currentIndex + offset + options.length) % options.length].focus();
+});
+document.addEventListener("pointerdown", event => {
+  if (!elements.refreshIntervalPicker.contains(event.target)) closeRefreshIntervalMenu();
+  if (!event.target.closest(".action-menu")) closeCrawlerActionMenus();
+});
 elements.pauseButton.addEventListener("click", () => {
   state.paused = !state.paused;
   elements.pauseButton.classList.toggle("active", state.paused);
@@ -272,6 +355,24 @@ elements.createForm.addEventListener("submit", async event => {
     await loadData(true);
   } catch (error) {
     elements.createError.textContent = error.message;
+  }
+});
+
+elements.deleteCrawler.addEventListener("click", async () => {
+  const crawlerId = state.editingCrawlerId;
+  if (!crawlerId || !window.confirm(`确定删除爬虫 ${crawlerId}？关联日志和动作记录也会被删除。`)) return;
+  elements.deleteCrawler.disabled = true;
+  elements.createError.textContent = "";
+  try {
+    const result = await api(`/api/crawlers/${encodeURIComponent(crawlerId)}`, { method: "DELETE" });
+    elements.crawlerDialog.close();
+    state.editingCrawlerId = null;
+    showToast(result.message);
+    await loadData(true);
+  } catch (error) {
+    elements.createError.textContent = error.message;
+  } finally {
+    elements.deleteCrawler.disabled = false;
   }
 });
 

@@ -186,6 +186,23 @@ async def update_crawler(crawler_id: str, payload: CrawlerUpdate, request: Reque
     return {**serialize_document(crawler), **updates, "status": crawler_status(last_log)}
 
 
+@app.delete("/api/crawlers/{crawler_id}")
+async def delete_crawler(crawler_id: str, request: Request):
+    crawler = await require_crawler(request, crawler_id)
+    last_log = await request.app.state.db.log.find_one(
+        {"crawler_id": crawler_id}, sort=[("timestamp", -1)]
+    )
+    if crawler_status(last_log) in {"running", "idle"}:
+        raise HTTPException(status_code=409, detail="请先停止爬虫再删除")
+
+    await request.app.state.db.crawlers.delete_one({"_id": crawler["_id"]})
+    await request.app.state.db.log.delete_many({"crawler_id": crawler_id})
+    await request.app.state.db.action.delete_many({"crawler_id": crawler_id})
+    await request.app.state.redis.lrem("crawler_queue", 0, crawler_id)
+    await request.app.state.redis.delete(f"Action_Queue_{crawler_id}")
+    return {"message": "爬虫已删除"}
+
+
 @app.post("/api/crawlers/{crawler_id}/launch")
 async def launch_crawler(crawler_id: str, request: Request):
     await require_crawler(request, crawler_id)

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260920-4">
+  <link rel="stylesheet" href="/static/styles.css?v=20260920-11">
 </head>
 <body>
   <header class="topbar">
@@ -24,15 +24,20 @@
         <strong id="lastRefresh">同步中</strong>
         <small id="refreshState">自动刷新已开启</small>
       </div>
-      <label class="refresh-interval" title="自动刷新间隔">
+      <div id="refreshIntervalPicker" class="refresh-interval">
         <span>刷新</span>
-        <select id="refreshInterval" aria-label="自动刷新间隔">
-          <option value="500">0.5s</option>
-          <option value="1000">1s</option>
-          <option value="2000" selected>2s</option>
-          <option value="3000">3s</option>
-        </select>
-      </label>
+        <button id="refreshIntervalButton" class="refresh-interval-trigger" type="button" aria-label="自动刷新间隔，当前 2 秒" aria-haspopup="listbox" aria-expanded="false">
+          <strong id="refreshIntervalValue">2s</strong>
+          <span class="select-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="refreshIntervalMenu" class="refresh-interval-menu" role="listbox" aria-label="自动刷新间隔" hidden>
+          <button type="button" role="option" data-value="500" aria-selected="false">0.5s</button>
+          <button type="button" role="option" data-value="1000" aria-selected="false">1s</button>
+          <button type="button" role="option" data-value="2000" aria-selected="true">2s</button>
+          <button type="button" role="option" data-value="3000" aria-selected="false">3s</button>
+        </div>
+        <input id="refreshInterval" type="hidden" value="2000">
+      </div>
       <button id="pauseButton" class="refresh-control" type="button" title="暂停自动刷新" aria-label="暂停自动刷新">
         <span class="pause-icon" aria-hidden="true"></span>
       </button>
@@ -79,14 +84,16 @@
       <label>爬虫 ID<input name="crawler_id" required maxlength="64" placeholder="例如 xhs_TEL7236"></label>
       <label>用户数据目录<input name="user_data_dir" required maxlength="256" placeholder="例如 xhs_TEL7236"></label>
       <label>图片策略<select name="image_strategy"><option value="None">None</option><option value="Download">Download</option></select></label>
-      <fieldset>
-        <legend>代理</legend>
-        <label>URL<input name="proxy_url" maxlength="2048" placeholder="host:port"></label>
-        <label>用户名<input name="proxy_user" maxlength="256" autocomplete="username"></label>
-        <label>密码<input name="proxy_password" type="password" maxlength="256" autocomplete="new-password"></label>
-      </fieldset>
+      <details class="proxy-panel">
+        <summary>代理</summary>
+        <div class="proxy-fields">
+          <label>URL<input name="proxy_url" maxlength="2048" placeholder="host:port"></label>
+          <label>用户名<input name="proxy_user" maxlength="256" autocomplete="username"></label>
+          <label>密码<input name="proxy_password" type="password" maxlength="256" autocomplete="new-password"></label>
+        </div>
+      </details>
       <p id="createError" class="form-error"></p>
-      <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button id="submitCrawler" type="submit" value="default" class="primary-button">创建实例</button></div>
+      <div class="dialog-actions"><button id="deleteCrawler" type="button" class="delete-button" hidden>删除爬虫</button><button value="cancel" class="secondary-button">取消</button><button id="submitCrawler" type="submit" value="default" class="primary-button">创建实例</button></div>
     </form>
   </dialog>
 
@@ -106,6 +113,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260920-4" defer></script>
+  <script src="/static/app.js?v=20260920-11" defer></script>
 </body>
 </html>

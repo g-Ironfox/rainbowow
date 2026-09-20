@@ -53,8 +53,17 @@ button { cursor: pointer; }
 .sync-meta span, .sync-meta small { color: var(--muted); font-size: 10px; line-height: 1.2; }
 .sync-meta strong { margin: 1px 0; font: 600 15px "IBM Plex Mono"; }
 .sync-meta small.error { color: var(--red); }
-.refresh-interval { width: 104px; height: 46px; margin: 0; padding: 0 9px; display: flex; grid-template-columns: none; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 11px; }
-.refresh-interval select { flex: 1; min-width: 0; height: 100%; padding: 0 2px; border: 0; outline: 0; background: #fff; color: var(--ink); font: 600 12px "IBM Plex Mono"; }
+.refresh-interval { position: relative; width: 108px; height: 46px; display: flex; align-items: center; gap: 7px; padding-left: 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: #fff; font-size: 11px; }
+.refresh-interval-trigger { flex: 1; align-self: stretch; min-width: 0; padding: 0 10px 0 2px; display: flex; align-items: center; justify-content: space-between; gap: 7px; border: 0; border-radius: 0 5px 5px 0; color: var(--ink); background: transparent; }
+.refresh-interval-trigger strong { font: 600 12px "IBM Plex Mono"; }
+.select-chevron { width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .15s ease; }
+.refresh-interval.open { border-color: var(--line-strong); }
+.refresh-interval.open .select-chevron { transform: translateY(2px) rotate(225deg); }
+.refresh-interval-menu { position: absolute; z-index: 20; top: calc(100% + 6px); right: -1px; width: 72px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; box-shadow: 0 12px 28px rgba(32, 33, 39, .14); }
+.refresh-interval-menu[hidden] { display: none; }
+.refresh-interval-menu button { width: 100%; height: 32px; padding: 0 9px; display: flex; align-items: center; border: 0; border-radius: 4px; color: var(--ink); background: transparent; font: 500 12px "IBM Plex Mono"; text-align: left; }
+.refresh-interval-menu button:hover, .refresh-interval-menu button:focus-visible { outline: 0; background: var(--paper); }
+.refresh-interval-menu button[aria-selected="true"] { color: #fff; background: var(--ink); }
 .refresh-control { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); transition: background-color .15s ease, border-color .15s ease; }
 .refresh-control:hover, .refresh-control.active { border-color: var(--line-strong); background: var(--paper); }
 .pause-icon { width: 14px; height: 17px; border-left: 4px solid currentColor; border-right: 4px solid currentColor; }
@@ -79,11 +88,14 @@ main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 
 .eyebrow { color: var(--accent); font: 600 9px "IBM Plex Mono"; letter-spacing: .08em; }
 .activity-heading select { min-width: 120px; max-width: 160px; height: 34px; padding: 0 28px 0 10px; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font-size: 12px; }
 
-.primary-button, .secondary-button { min-height: 40px; padding: 0 17px; border: 1px solid transparent; border-radius: 7px; font-weight: 600; font-size: 13px; transition: transform .15s ease, background-color .15s ease, border-color .15s ease; }
+.primary-button, .secondary-button, .delete-button { min-height: 40px; padding: 0 17px; border: 1px solid transparent; border-radius: 7px; font-weight: 600; font-size: 13px; transition: transform .15s ease, background-color .15s ease, border-color .15s ease; }
 .primary-button { color: white; background: var(--accent); }
 .primary-button:hover { background: var(--accent-hover); transform: translateY(-1px); }
 .primary-button span { display: inline; color: inherit; }
 .secondary-button { color: var(--ink); background: #fff; border-color: var(--line); }
+.delete-button { margin-right: auto; color: var(--red); background: #fff; border-color: #efc7ca; }
+.delete-button:hover { background: var(--accent-soft); border-color: #e8b8bb; }
+.delete-button:disabled { cursor: not-allowed; opacity: .5; }
 .icon-button, .close-button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--muted); font-size: 18px; transition: .15s ease; }
 .icon-button:hover, .close-button:hover { color: var(--ink); border-color: var(--line-strong); background: var(--paper); }
 
@@ -111,6 +123,15 @@ main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 
 .action-button.danger { color: var(--red); }
 .action-button:disabled { cursor: not-allowed; opacity: .38; }
 .action-button:disabled:hover { color: #4f5058; border-color: var(--line); background: #fff; }
+.action-menu { position: relative; }
+.action-menu-trigger { display: flex; align-items: center; gap: 7px; }
+.action-menu-chevron { width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .15s ease; }
+.action-menu.open .action-menu-trigger { color: var(--accent); border-color: #e8b8bb; background: var(--accent-soft); }
+.action-menu.open .action-menu-chevron { transform: translateY(2px) rotate(225deg); }
+.action-menu-list { position: absolute; z-index: 10; top: calc(100% + 5px); right: 0; width: 112px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; box-shadow: 0 12px 28px rgba(32, 33, 39, .14); }
+.action-menu-list[hidden] { display: none; }
+.action-menu-list button { width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; border: 0; border-radius: 4px; color: var(--ink); background: transparent; font-size: 12px; text-align: left; }
+.action-menu-list button:hover, .action-menu-list button:focus-visible { outline: 0; color: var(--accent); background: var(--accent-soft); }
 
 .empty-state { flex: 1 1 auto; min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); }
 .empty-state[hidden] { display: none; }
@@ -133,6 +154,8 @@ main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 
 .crawler-list::-webkit-scrollbar-thumb, .log-list::-webkit-scrollbar-thumb { background: #d9dae0; border: 3px solid #fff; border-radius: 10px; }
 
 dialog { width: min(460px, calc(100vw - 32px)); padding: 0; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 24px 70px rgba(28,28,35,.18); }
+#crawlerDialog { scrollbar-width: none; }
+#crawlerDialog::-webkit-scrollbar { display: none; }
 dialog::backdrop { background: rgba(18, 27, 22, .6); backdrop-filter: blur(3px); }
 .image-preview-dialog { width: auto; max-width: calc(100vw - 40px); max-height: calc(100dvh - 40px); overflow: visible; border: 0; border-radius: 6px; background: transparent; box-shadow: none; }
 .image-preview-dialog img { display: block; max-width: calc(100vw - 40px); max-height: calc(100dvh - 40px); object-fit: contain; border-radius: 6px; box-shadow: 0 24px 70px rgba(0,0,0,.35); }
@@ -141,12 +164,17 @@ dialog::backdrop { background: rgba(18, 27, 22, .6); backdrop-filter: blur(3px);
 dialog form { padding: 22px; }
 .dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .dialog-heading h2 { margin: 3px 0 0; font-size: 22px; }
-fieldset { margin: 18px 0 0; padding: 2px 14px 14px; border: 1px solid var(--line); }
-legend { padding: 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.proxy-panel { margin-top: 18px; border: 1px solid var(--line); }
+.proxy-panel summary { position: relative; padding: 13px 38px 13px 14px; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; list-style: none; }
+.proxy-panel summary::-webkit-details-marker { display: none; }
+.proxy-panel summary::after { content: ""; position: absolute; top: 50%; right: 16px; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-65%) rotate(45deg); transition: transform .15s ease; }
+.proxy-panel[open] summary { border-bottom: 1px solid var(--line); }
+.proxy-panel[open] summary::after { transform: translateY(-35%) rotate(225deg); }
+.proxy-fields { padding: 0 14px 14px; }
 label { display: grid; gap: 7px; margin-top: 14px; font-size: 13px; font-weight: 600; }
 input, dialog select { width: 100%; height: 42px; padding: 0 11px; color: var(--ink); background: #fff; border: 1px solid #bdc7bf; outline: 0; }
 input:focus, dialog select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217,67,67,.1); }
-button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button:focus-visible, select:focus-visible, .refresh-interval:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 .form-error { min-height: 18px; margin: 10px 0 0; color: var(--red); font-size: 12px; }
 .toast { position: fixed; right: 24px; bottom: 24px; max-width: min(380px, calc(100vw - 48px)); padding: 12px 16px; color: white; background: var(--ink); border-radius: 7px; box-shadow: var(--shadow); opacity: 0; transform: translateY(10px); pointer-events: none; transition: .2s ease; }
@@ -169,8 +197,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   .topbar { height: auto; min-height: 64px; padding: 8px 16px; gap: 12px; }
   .brand div span { display: none; }
   .sync-meta { min-width: 82px; }
-  .refresh-interval { width: 78px; }
+  .refresh-interval { width: 78px; padding-left: 0; }
   .refresh-interval > span { display: none; }
+  .refresh-interval-trigger { padding-left: 10px; }
   .refresh-control { width: 42px; }
   main { padding: 16px 12px 28px; }
   .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
@@ -187,6 +216,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 @media (max-width: 520px) {
   .brand div, .sync-meta { display: none; }
   .refresh-panel { gap: 4px; }
-  .refresh-interval { width: 70px; padding: 0 6px; }
+  .refresh-interval { width: 70px; padding-left: 0; }
   .refresh-control { width: 40px; }
 }
