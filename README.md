@@ -8,7 +8,7 @@
 | --------- | ------------------------------------------ |
 | `crawler` | Camoufox 浏览器爬虫 (headless="virtual" + Xvfb 虚拟显示), 阻塞消费任务队列  |
 | `cli`     | 基于 Typer + Rich 的爬虫管理命令行工具     |
-| `redis`   | 任务队列 / 心跳 (Redis 7)                  |
+| `redis`   | 任务队列 / crawler 实时状态 (Redis 7)      |
 | `mongodb` | 数据存储 (MongoDB 8)                       |
 
 ## 快速开始

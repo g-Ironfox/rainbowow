@@ -6,8 +6,6 @@ import typer
 from pymongo import MongoClient
 from rich.console import Console  # 引入 Rich 以获得更好的输出
 
-TIMEOUT=60
-
 # --- 数据库和 Redis 连接设置 (保持不变) ---
 MONGO_USER = os.getenv("MONGO_USER", "root")
 MONGO_PASS = os.getenv("MONGO_PASS", "114515")
@@ -19,8 +17,16 @@ crawlers_db = db["crawlers"]
 log_db = db["log"]
 action_db = db["action"]
 # ... redis setup ...
-r=redis.Redis(host="redis", port=6379, db=0)
+r=redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
 # ---------------------------------------------
+
+def crawler_status(crawler_id: str) -> str:
+    state = r.hget(f"crawler_status:{crawler_id}", "state")
+    if state == "idle":
+        return "idle"
+    if state in {"starting", "running"}:
+        return "running"
+    return "stopped"
 
 # 创建 Typer 应用和 Rich Console 实例
 app = typer.Typer(
@@ -38,8 +44,7 @@ def create_crawler(crawler_id: str,user_data_dir: str , image_strategy: str = "N
 @app.command("launch")
 def launch_crawler(crawler_id: str):
     if crawlers_db.find_one({"crawler_id": crawler_id}):
-        last=log_db.find({"crawler_id": crawler_id}).sort("timestamp",-1).limit(1)
-        if not last or (last[0]['timestamp']<time.time()-TIMEOUT or last[0]['message'] in ["Terminated","Created"]):
+        if crawler_status(crawler_id) == "stopped":
             r.rpush("crawler_queue", crawler_id)
             console.print(f"[green]已将爬虫 '{crawler_id}' 添加到队列中[/green]")
         else:
@@ -50,15 +55,11 @@ def launch_crawler(crawler_id: str):
 @app.command("terminate")
 def stop_crawler(crawler_id: str):
     if crawlers_db.find_one({"crawler_id": crawler_id}):
-        last=log_db.find({"crawler_id": crawler_id}).sort("timestamp",-1).limit(1)
-        if not(last) or (last[0]['timestamp']<time.time()-TIMEOUT or last[0]['message'] in ["Terminated","Created"]):
+        if crawler_status(crawler_id) == "stopped":
             console.print(f"[yellow]警告: 爬虫 '{crawler_id}' 似乎已经停止或异常。[/yellow]")
         else:
             r.lpush(f"Action_Queue_{crawler_id}", "TERMINATE")
             console.print(f"[green]已发布爬虫 '{crawler_id}'停止事件[/green]")
-            last=log_db.find({"crawler_id": crawler_id}).sort("timestamp",-1).limit(1)
-            if last and last[0]["message"] == "Terminated":
-                console.print(f"[green]爬虫 '{crawler_id}' 已成功停止[/green]")
     else:
         console.print(f"[red]爬虫 '{crawler_id}' 不存在[/red]")
 
@@ -104,16 +105,14 @@ def list_crawlers():
 def status():
     crawlers=crawlers_db.find()
     for i in crawlers:
-        last=log_db.find({"crawler_id":i['crawler_id']}).sort("timestamp",-1).limit(1)
-        
-        if not(last) or (last[0]['timestamp']<time.time()-TIMEOUT or last[0]['message'] in ["Terminated","Created"]):
+        current_status = crawler_status(i['crawler_id'])
+
+        if current_status == "stopped":
             s="[red]停止[/red]"
-        elif last[0]['timestamp']<time.time()-TIMEOUT:
-            s="[red]状态异常[/red]"
+        elif current_status == "idle":
+            s="[magenta]空闲[/magenta]"
         else:
             s="[green]运行中[/green]"
-            if last[0]['message'] in ["Idle","Waiting"]:
-                s="[magenta]空闲[/magenta]"
 
         console.print(f"[blue]爬虫ID: {i['crawler_id']}[/blue] 状态:{s}")
         console.print(f"  [yellow]context目录: {i['user_data_dir']}[/yellow]")

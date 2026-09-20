@@ -1,18 +1,103 @@
 import asyncio
 from bson import ObjectId
-from pymongo import cursor
 from db import DB
 import time
 import random
+import uuid
 from camoufox.async_api import AsyncCamoufox
 from datetime import datetime
 import base64
 
-TIMEOUT=60
+STATUS_TTL = 90
+STATUS_HEARTBEAT_INTERVAL = 30
+
+ACQUIRE_STATUS_SCRIPT = """
+if redis.call('EXISTS', KEYS[1]) == 1 then
+    return 0
+end
+redis.call('HSET', KEYS[1],
+    'state', ARGV[1],
+    'instance_id', ARGV[2],
+    'updated_at', ARGV[3])
+redis.call('EXPIRE', KEYS[1], ARGV[4])
+return 1
+"""
+
+UPDATE_STATUS_SCRIPT = """
+if redis.call('HGET', KEYS[1], 'instance_id') ~= ARGV[1] then
+    return 0
+end
+redis.call('HSET', KEYS[1], 'state', ARGV[2], 'updated_at', ARGV[3])
+redis.call('EXPIRE', KEYS[1], ARGV[4])
+return 1
+"""
+
+REFRESH_STATUS_SCRIPT = """
+if redis.call('HGET', KEYS[1], 'instance_id') ~= ARGV[1] then
+    return 0
+end
+redis.call('HSET', KEYS[1], 'updated_at', ARGV[2])
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+return 1
+"""
+
+RELEASE_STATUS_SCRIPT = """
+if redis.call('HGET', KEYS[1], 'instance_id') == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
 
 class Crawler:
     def __init__(self, cid):
         self.cid=cid
+        self.instance_id = str(uuid.uuid4())
+        self.status_key = f"crawler_status:{cid}"
+
+    async def acquire_status(self):
+        return bool(await DB.r.eval(
+            ACQUIRE_STATUS_SCRIPT,
+            1,
+            self.status_key,
+            "starting",
+            self.instance_id,
+            time.time(),
+            STATUS_TTL,
+        ))
+
+    async def set_status(self, state):
+        return bool(await DB.r.eval(
+            UPDATE_STATUS_SCRIPT,
+            1,
+            self.status_key,
+            self.instance_id,
+            state,
+            time.time(),
+            STATUS_TTL,
+        ))
+
+    async def refresh_status(self):
+        while True:
+            await asyncio.sleep(STATUS_HEARTBEAT_INTERVAL)
+            refreshed = await DB.r.eval(
+                REFRESH_STATUS_SCRIPT,
+                1,
+                self.status_key,
+                self.instance_id,
+                time.time(),
+                STATUS_TTL,
+            )
+            if not refreshed:
+                return
+
+    async def release_status(self):
+        await DB.r.eval(
+            RELEASE_STATUS_SCRIPT,
+            1,
+            self.status_key,
+            self.instance_id,
+        )
+
     async def log(self, message , detail="",screenshot_page=None):
         img_str=''
         if screenshot_page:
@@ -25,56 +110,59 @@ class Crawler:
         await DB.log_db.insert_one({"crawler_id": self.cid, "message": message, "timestamp": time.time(),'detail':detail,'img_str':img_str})
 
     async def run(self):
-        cursor = DB.log_db.find({"crawler_id": self.cid}).sort("timestamp", -1).limit(1)
-        last_list = await cursor.to_list(length=1)  # 最多取 1 条
-        if last_list:
-            last=last_list[0]
-            if not(last['timestamp']<time.time()-TIMEOUT or last['message'] in ["Terminated","Created"]):
-                await self.log("Error","Repeated")
-                return
-        
-        self.config=await DB.crawler_db.find_one({"crawler_id": self.cid})
-        if self.config is None:
-            await self.log("Error","Inexistent")
+        if not await self.acquire_status():
+            await self.log("Error","Repeated")
             return
-        await self.log("Starting")
-        self.user_data_dir=self.config['user_data_dir']
 
-        proxy_config = self.config.get("proxy", {})
-        proxy = None
-        if proxy_config.get("url"):
-            proxy = {"server": proxy_config["url"]}
-            if proxy_config.get("user"):
-                proxy["username"] = proxy_config["user"]
-            if proxy_config.get("password"):
-                proxy["password"] = proxy_config["password"]
+        heartbeat_task = asyncio.create_task(self.refresh_status())
+        try:
+            self.config=await DB.crawler_db.find_one({"crawler_id": self.cid})
+            if self.config is None:
+                await self.log("Error","Inexistent")
+                return
+            await self.log("Starting")
+            self.user_data_dir=self.config['user_data_dir']
 
-        async with AsyncCamoufox(window=(1282, 855), headless="virtual",persistent_context=True,user_data_dir=f"./{self.user_data_dir}",proxy=proxy) as context:
-            page = await context.new_page()
+            proxy_config = self.config.get("proxy", {})
+            proxy = None
+            if proxy_config.get("url"):
+                proxy = {"server": proxy_config["url"]}
+                if proxy_config.get("user"):
+                    proxy["username"] = proxy_config["user"]
+                if proxy_config.get("password"):
+                    proxy["password"] = proxy_config["password"]
 
-            await self.log("Started")
-            while True:
-                await self.log("Waiting")
-                cm = await DB.r.blpop(f"Action_Queue_{self.cid}", timeout=60) # 阻塞等待Action
-                if not cm:
-                    # timeout 成为了天然的heartbeat
-                    continue
-                _,action_id = cm
-                if action_id=="TERMINATE":
-                    await self.log("Terminated")
-                    return
+            async with AsyncCamoufox(window=(1282, 855), headless="virtual",persistent_context=True,user_data_dir=f"./{self.user_data_dir}",proxy=proxy) as context:
+                page = await context.new_page()
 
-                action = await DB.action_db.find_one({"_id": ObjectId(action_id)})
-                if not action:
-                    await self.log("Error","Action Not Found")
-                    continue
+                await self.log("Started")
+                await self.set_status("idle")
+                while True:
+                    cm = await DB.r.blpop(f"Action_Queue_{self.cid}", timeout=60) # 阻塞等待Action
+                    if not cm:
+                        continue
+                    _,action_id = cm
+                    if action_id=="TERMINATE":
+                        await self.log("Terminated")
+                        return
 
-                await self.log(f"Processing",f"action_id[{action_id}]")
-                try:
-                    await self.work(action, page)
-                except Exception as e:
-                    await self.log("Error",str(e))
-                await self.log("Completed")
+                    action = await DB.action_db.find_one({"_id": ObjectId(action_id)})
+                    if not action:
+                        await self.log("Error","Action Not Found")
+                        continue
+
+                    await self.set_status("running")
+                    await self.log(f"Processing",f"action_id[{action_id}]")
+                    try:
+                        await self.work(action, page)
+                    except Exception as e:
+                        await self.log("Error",str(e))
+                    await self.log("Completed")
+                    await self.set_status("idle")
+        finally:
+            heartbeat_task.cancel()
+            await asyncio.gather(heartbeat_task, return_exceptions=True)
+            await self.release_status()
 
     async def work(self, action,page):
         return         

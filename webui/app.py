@@ -12,7 +12,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-HEARTBEAT_TIMEOUT = 60
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -80,14 +79,13 @@ def serialize_document(document: dict) -> dict:
     return result
 
 
-def crawler_status(last_log: dict | None, now: float | None = None) -> str:
-    if not last_log or last_log.get("message") in {"Created", "Terminated"}:
-        return "stopped"
-    if last_log.get("timestamp", 0) < (now or time.time()) - HEARTBEAT_TIMEOUT:
-        return "error"
-    if last_log.get("message") in {"Idle", "Waiting"}:
+async def crawler_status(redis_client, crawler_id: str) -> str:
+    state = await redis_client.hget(f"crawler_status:{crawler_id}", "state")
+    if state == "idle":
         return "idle"
-    return "running"
+    if state in {"starting", "running"}:
+        return "running"
+    return "stopped"
 
 
 @asynccontextmanager
@@ -145,7 +143,7 @@ async def list_crawlers(request: Request):
             {"crawler_id": crawler["crawler_id"]}, sort=[("timestamp", -1)]
         )
         item = serialize_document(crawler)
-        item["status"] = crawler_status(last_log)
+        item["status"] = await crawler_status(request.app.state.redis, crawler["crawler_id"])
         item["last_log"] = serialize_document(last_log) if last_log else None
         result.append(item)
     return result
@@ -175,41 +173,37 @@ async def require_crawler(request: Request, crawler_id: str) -> dict:
 @app.put("/api/crawlers/{crawler_id}")
 async def update_crawler(crawler_id: str, payload: CrawlerUpdate, request: Request):
     crawler = await require_crawler(request, crawler_id)
-    last_log = await request.app.state.db.log.find_one(
-        {"crawler_id": crawler_id}, sort=[("timestamp", -1)]
-    )
-    if crawler_status(last_log) in {"running", "idle"}:
+    current_status = await crawler_status(request.app.state.redis, crawler_id)
+    if current_status in {"running", "idle"}:
         raise HTTPException(status_code=409, detail="请先停止爬虫再编辑配置")
 
     updates = payload.model_dump()
     await request.app.state.db.crawlers.update_one({"_id": crawler["_id"]}, {"$set": updates})
-    return {**serialize_document(crawler), **updates, "status": crawler_status(last_log)}
+    return {**serialize_document(crawler), **updates, "status": current_status}
 
 
 @app.delete("/api/crawlers/{crawler_id}")
 async def delete_crawler(crawler_id: str, request: Request):
     crawler = await require_crawler(request, crawler_id)
-    last_log = await request.app.state.db.log.find_one(
-        {"crawler_id": crawler_id}, sort=[("timestamp", -1)]
-    )
-    if crawler_status(last_log) in {"running", "idle"}:
+    current_status = await crawler_status(request.app.state.redis, crawler_id)
+    if current_status in {"running", "idle"}:
         raise HTTPException(status_code=409, detail="请先停止爬虫再删除")
 
     await request.app.state.db.crawlers.delete_one({"_id": crawler["_id"]})
     await request.app.state.db.log.delete_many({"crawler_id": crawler_id})
     await request.app.state.db.action.delete_many({"crawler_id": crawler_id})
     await request.app.state.redis.lrem("crawler_queue", 0, crawler_id)
-    await request.app.state.redis.delete(f"Action_Queue_{crawler_id}")
+    await request.app.state.redis.delete(
+        f"Action_Queue_{crawler_id}",
+        f"crawler_status:{crawler_id}",
+    )
     return {"message": "爬虫已删除"}
 
 
 @app.post("/api/crawlers/{crawler_id}/launch")
 async def launch_crawler(crawler_id: str, request: Request):
     await require_crawler(request, crawler_id)
-    last_log = await request.app.state.db.log.find_one(
-        {"crawler_id": crawler_id}, sort=[("timestamp", -1)]
-    )
-    current_status = crawler_status(last_log)
+    current_status = await crawler_status(request.app.state.redis, crawler_id)
     if current_status in {"running", "idle"}:
         raise HTTPException(status_code=409, detail="爬虫已在运行")
     await request.app.state.redis.rpush("crawler_queue", crawler_id)
@@ -219,10 +213,8 @@ async def launch_crawler(crawler_id: str, request: Request):
 @app.post("/api/crawlers/{crawler_id}/terminate")
 async def terminate_crawler(crawler_id: str, request: Request):
     await require_crawler(request, crawler_id)
-    last_log = await request.app.state.db.log.find_one(
-        {"crawler_id": crawler_id}, sort=[("timestamp", -1)]
-    )
-    if crawler_status(last_log) not in {"running", "idle"}:
+    current_status = await crawler_status(request.app.state.redis, crawler_id)
+    if current_status not in {"running", "idle"}:
         raise HTTPException(status_code=409, detail="爬虫当前未运行")
     await request.app.state.redis.lpush(f"Action_Queue_{crawler_id}", "TERMINATE")
     return {"message": "停止事件已发送"}
