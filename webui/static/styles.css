@@ -61,12 +61,13 @@ button { cursor: pointer; }
 .pause-icon.play { width: 0; height: 0; margin-left: 3px; border: 0; border-top: 9px solid transparent; border-bottom: 9px solid transparent; border-left: 14px solid currentColor; }
 
 main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 22px 28px 26px; display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
-.summary { flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(130px, 190px)) 1fr; gap: 12px; }
+.summary { flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(130px, 190px)) 1fr; gap: 12px; }
 .summary > div { position: relative; min-height: 78px; padding: 15px 18px; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 3px 12px rgba(32,33,39,.035); }
 .summary > div::after { content: ""; position: absolute; top: 0; right: 0; width: 42px; height: 3px; background: var(--line-strong); }
 .summary > div:first-child::after { background: var(--accent); }
 .summary > div:nth-child(2)::after { background: var(--green); }
 .summary > div:nth-child(3)::after { background: var(--blue); }
+.summary > div:nth-child(4)::after { background: var(--yellow); }
 .summary span { display: block; color: var(--muted); font-size: 11px; }
 .summary strong { display: block; margin-top: 3px; font: 500 28px "IBM Plex Mono"; }
 .summary .primary-button { justify-self: end; align-self: center; }
@@ -155,6 +156,8 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 @media (max-width: 980px) {
   body { overflow-y: auto; overflow-x: hidden; }
   main { height: auto; min-height: calc(100dvh - 64px); overflow: visible; }
+  .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .summary .primary-button { grid-column: 1 / -1; justify-self: end; }
   .workspace { grid-template-columns: 1fr; }
   .crawler-panel, .activity-panel { min-height: 420px; }
   .crawler-list, .log-list { max-height: 480px; }
@@ -168,7 +171,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   .refresh-interval > span { display: none; }
   .refresh-control { width: 42px; }
   main { padding: 16px 12px 28px; }
-  .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
   .summary > div { min-height: 70px; padding: 12px; }
   .summary strong { font-size: 24px; }
   .summary .primary-button { grid-column: 1 / -1; width: 100%; margin: 0; }

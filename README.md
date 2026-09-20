@@ -24,6 +24,16 @@ docker compose up -d --build
 
 启动后访问 <http://localhost:8000>。WebUI 支持创建和查看爬虫、启动/停止实例、跳转页面、抓取首页以及查看实时日志。
 
+## 开发模式
+
+首次构建镜像后，使用开发配置启动：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+`crawler`、`cli` 和 `webui` 源码目录都会挂载到容器的 `/app`。修改 WebUI 代码时 Uvicorn 会自动重载，无需重新构建镜像；仅当依赖文件或 Dockerfile 变化时才需要加 `--build`。
+
 ## CLI 使用
 
 ```bash

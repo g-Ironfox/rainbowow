@@ -98,6 +98,12 @@ async def health(request: Request):
     return {"status": "ok"}
 
 
+@app.get("/api/stats")
+async def get_stats(request: Request):
+    rawdata_count = await request.app.state.db.rawdata.count_documents({})
+    return {"rawdata_count": rawdata_count}
+
+
 @app.get("/api/crawlers")
 async def list_crawlers(request: Request):
     crawlers = await request.app.state.db.crawlers.find().sort("crawler_id", 1).to_list(None)

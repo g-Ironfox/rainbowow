@@ -17,6 +17,7 @@ const elements = {
   totalCount: document.querySelector("#totalCount"),
   runningCount: document.querySelector("#runningCount"),
   idleCount: document.querySelector("#idleCount"),
+  rawdataCount: document.querySelector("#rawdataCount"),
   lastRefresh: document.querySelector("#lastRefresh"),
   refreshState: document.querySelector("#refreshState"),
   refreshInterval: document.querySelector("#refreshInterval"),
@@ -132,13 +133,15 @@ async function loadData(silent = false) {
   state.busy = true;
   try {
     const filter = elements.logFilter.value;
-    const [crawlers, logs] = await Promise.all([
+    const [crawlers, logs, stats] = await Promise.all([
       api("/api/crawlers"),
       api(`/api/logs?limit=100${filter ? `&crawler_id=${encodeURIComponent(filter)}` : ""}`),
+      api("/api/stats"),
     ]);
     state.crawlers = crawlers;
     renderCrawlers();
     renderLogs(logs);
+    elements.rawdataCount.textContent = stats.rawdata_count.toLocaleString("zh-CN");
     elements.lastRefresh.textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
     elements.refreshState.textContent = state.paused ? "自动刷新已暂停" : "自动刷新已开启";
     elements.refreshState.classList.remove("error");
