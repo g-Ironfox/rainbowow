@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=20260920-1">
 </head>
 <body>
   <header class="topbar">
@@ -93,7 +93,12 @@
     </form>
   </dialog>
 
+  <dialog id="imagePreviewDialog" class="image-preview-dialog">
+    <button class="close-button image-preview-close" type="button" aria-label="关闭大图">×</button>
+    <img id="imagePreview" alt="截屏大图">
+  </dialog>
+
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=20260920-1" defer></script>
 </body>
 </html>

@@ -119,8 +119,11 @@ main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 
 .log-entry { display: grid; grid-template-columns: 64px 72px minmax(0,1fr); gap: 9px; padding: 10px 14px; border-bottom: 1px solid #efeff2; font: 11px "IBM Plex Mono"; }
 .log-entry:hover { background: #fafafd; }
 .log-time, .log-crawler { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.log-message { min-width: 0; overflow-wrap: anywhere; }
+.log-message { min-width: 0; display: grid; gap: 8px; overflow-wrap: anywhere; }
 .log-message strong { margin-right: 6px; font-weight: 600; }
+.thumbnail-button { width: fit-content; padding: 0; border: 0; border-radius: 6px; background: transparent; }
+.thumbnail-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.log-thumbnail { display: block; width: 144px; max-width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
 .log-entry.error .log-message strong { color: var(--red); }
 .log-entry.checkpoint .log-message strong { color: var(--green); }
 
@@ -130,6 +133,10 @@ main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 
 
 dialog { width: min(460px, calc(100vw - 32px)); padding: 0; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 24px 70px rgba(28,28,35,.18); }
 dialog::backdrop { background: rgba(18, 27, 22, .6); backdrop-filter: blur(3px); }
+.image-preview-dialog { width: auto; max-width: calc(100vw - 40px); max-height: calc(100dvh - 40px); overflow: visible; border: 0; border-radius: 6px; background: transparent; box-shadow: none; }
+.image-preview-dialog img { display: block; max-width: calc(100vw - 40px); max-height: calc(100dvh - 40px); object-fit: contain; border-radius: 6px; box-shadow: 0 24px 70px rgba(0,0,0,.35); }
+.image-preview-close { position: absolute; z-index: 1; top: 8px; right: 8px; color: #fff; border-color: rgba(255,255,255,.5); background: rgba(32,33,39,.72); }
+.image-preview-close:hover { color: #fff; border-color: #fff; background: rgba(32,33,39,.9); }
 dialog form { padding: 22px; }
 .dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .dialog-heading h2 { margin: 3px 0 0; font-size: 22px; }

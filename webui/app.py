@@ -178,6 +178,11 @@ async def surface(crawler_id: str, request: Request):
     return await enqueue_action(request, crawler_id, "surface")
 
 
+@app.post("/api/crawlers/{crawler_id}/actions/screenshot")
+async def screenshot(crawler_id: str, request: Request):
+    return await enqueue_action(request, crawler_id, "screenshot")
+
+
 @app.post("/api/crawlers/{crawler_id}/actions/goto")
 async def goto(crawler_id: str, payload: GotoAction, request: Request):
     return await enqueue_action(request, crawler_id, "goto", {"url": payload.url})

@@ -41,12 +41,12 @@ class Crawler:
         self.user_data_dir=self.config['user_data_dir']
 
         proxy={
-            "server": "socks5h://host.docker.internal:10808",
+            "server": "socks5h://host.docker.internal:7860",
             "username": "spider",
             "password": "rainbow"
             }
 
-        async with AsyncCamoufox(window=(1282, 855), headless="virtual",persistent_context=True,proxy=proxy,user_data_dir=f"./{self.user_data_dir}") as context:
+        async with AsyncCamoufox(window=(1282, 855), headless="virtual",persistent_context=True,user_data_dir=f"./{self.user_data_dir}") as context:
             page = await context.new_page()
 
             await self.log("Started")
@@ -165,6 +165,8 @@ class XhsCrawler(Crawler):
             await self.surface(page)
         elif action['action']=="goto":
             await page.goto(action['args']['url'])
+        elif action['action']=="screenshot":
+            await self.log("Screenshot", screenshot_page=page)
         else:
             await self.log("Error","Action Undifined")
 async def launcher():

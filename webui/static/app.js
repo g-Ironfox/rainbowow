@@ -28,6 +28,8 @@ const elements = {
   gotoDialog: document.querySelector("#gotoDialog"),
   gotoForm: document.querySelector("#gotoForm"),
   gotoError: document.querySelector("#gotoError"),
+  imagePreviewDialog: document.querySelector("#imagePreviewDialog"),
+  imagePreview: document.querySelector("#imagePreview"),
   toast: document.querySelector("#toast"),
 };
 
@@ -84,6 +86,7 @@ function renderCrawlers() {
           <button class="action-button danger" data-action="terminate" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>停止</button>
           <button class="action-button" data-action="goto" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>跳转</button>
           <button class="action-button" data-action="surface" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>抓取首页</button>
+          <button class="action-button" data-action="screenshot" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>截屏</button>
         </div>
       </article>`;
   }).join("");
@@ -113,7 +116,10 @@ function renderLogs(logs) {
     <div class="log-entry ${String(log.message).toLowerCase()}">
       <span class="log-time">${formatTime(log.timestamp)}</span>
       <span class="log-crawler" title="${escapeHtml(log.crawler_id)}">${escapeHtml(log.crawler_id)}</span>
-      <span class="log-message"><strong>${escapeHtml(log.message)}</strong>${escapeHtml(log.detail || "")}</span>
+      <span class="log-message">
+        <span><strong>${escapeHtml(log.message)}</strong>${escapeHtml(log.detail || "")}</span>
+        ${log.img_str ? `<button class="thumbnail-button" type="button" aria-label="查看截屏大图"><img class="log-thumbnail" src="data:image/jpeg;base64,${escapeHtml(log.img_str)}" alt="${escapeHtml(log.crawler_id)} 截屏" loading="lazy"></button>` : ""}
+      </span>
     </div>`).join("") : `<div class="empty-state"><strong>暂无日志</strong></div>`;
   if (logMarkup !== state.logMarkup) {
     elements.logList.innerHTML = logMarkup;
@@ -157,7 +163,8 @@ elements.crawlerList.addEventListener("click", async event => {
   }
   button.disabled = true;
   try {
-    const result = await api(`/api/crawlers/${encodeURIComponent(id)}/${action === "surface" ? "actions/surface" : action}`, { method: "POST" });
+    const actionPath = ["surface", "screenshot"].includes(action) ? `actions/${action}` : action;
+    const result = await api(`/api/crawlers/${encodeURIComponent(id)}/${actionPath}`, { method: "POST" });
     showToast(result.message);
     await loadData(true);
   } catch (error) {
@@ -190,6 +197,18 @@ elements.pauseButton.addEventListener("click", () => {
   else loadData(true).finally(scheduleAutoRefresh);
 });
 elements.logFilter.addEventListener("change", () => loadData());
+elements.logList.addEventListener("click", event => {
+  const thumbnail = event.target.closest(".log-thumbnail");
+  if (!thumbnail) return;
+  elements.imagePreview.src = thumbnail.src;
+  elements.imagePreview.alt = thumbnail.alt;
+  elements.imagePreviewDialog.showModal();
+});
+elements.imagePreviewDialog.addEventListener("click", event => {
+  if (event.target === elements.imagePreviewDialog || event.target.closest(".image-preview-close")) {
+    elements.imagePreviewDialog.close();
+  }
+});
 
 elements.createForm.addEventListener("submit", async event => {
   event.preventDefault();
