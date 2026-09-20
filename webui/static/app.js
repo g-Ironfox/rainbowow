@@ -7,6 +7,7 @@ const state = {
   firstCrawlerRender: true,
   paused: false,
   refreshTimer: null,
+  editingCrawlerId: null,
 };
 
 const elements = {
@@ -23,9 +24,12 @@ const elements = {
   refreshInterval: document.querySelector("#refreshInterval"),
   pauseButton: document.querySelector("#pauseButton"),
   refreshButton: document.querySelector("#refreshButton"),
-  createDialog: document.querySelector("#createDialog"),
+  crawlerDialog: document.querySelector("#crawlerDialog"),
   createForm: document.querySelector("#createForm"),
   createError: document.querySelector("#createError"),
+  crawlerDialogEyebrow: document.querySelector("#crawlerDialogEyebrow"),
+  crawlerDialogTitle: document.querySelector("#crawlerDialogTitle"),
+  submitCrawler: document.querySelector("#submitCrawler"),
   gotoDialog: document.querySelector("#gotoDialog"),
   gotoForm: document.querySelector("#gotoForm"),
   gotoError: document.querySelector("#gotoError"),
@@ -83,6 +87,7 @@ function renderCrawlers() {
           <span>${escapeHtml(lastMessage)} · ${formatTime(crawler.last_log?.timestamp)}</span>
         </div>
         <div class="crawler-actions">
+          <button class="action-button" data-action="edit" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "disabled" : ""}>编辑</button>
           <button class="action-button" data-action="launch" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "disabled" : ""}>启动</button>
           <button class="action-button danger" data-action="terminate" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>停止</button>
           <button class="action-button" data-action="goto" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>跳转</button>
@@ -158,6 +163,25 @@ elements.crawlerList.addEventListener("click", async event => {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
   const { action, id } = button.dataset;
+  if (action === "edit") {
+    const crawler = state.crawlers.find(item => item.crawler_id === id);
+    if (!crawler) return;
+    state.editingCrawlerId = id;
+    elements.createForm.reset();
+    elements.createForm.elements.crawler_id.value = crawler.crawler_id;
+    elements.createForm.elements.crawler_id.disabled = true;
+    elements.createForm.elements.user_data_dir.value = crawler.user_data_dir;
+    elements.createForm.elements.image_strategy.value = crawler.image_strategy || "None";
+    elements.createForm.elements.proxy_url.value = crawler.proxy?.url || "";
+    elements.createForm.elements.proxy_user.value = crawler.proxy?.user || "";
+    elements.createForm.elements.proxy_password.value = crawler.proxy?.password || "";
+    elements.crawlerDialogEyebrow.textContent = "EDIT INSTANCE";
+    elements.crawlerDialogTitle.textContent = "编辑爬虫";
+    elements.submitCrawler.textContent = "保存修改";
+    elements.createError.textContent = "";
+    elements.crawlerDialog.showModal();
+    return;
+  }
   if (action === "goto") {
     elements.gotoForm.elements.crawler_id.value = id;
     elements.gotoError.textContent = "";
@@ -178,9 +202,14 @@ elements.crawlerList.addEventListener("click", async event => {
 });
 
 document.querySelector("#createButton").addEventListener("click", () => {
+  state.editingCrawlerId = null;
   elements.createForm.reset();
+  elements.createForm.elements.crawler_id.disabled = false;
+  elements.crawlerDialogEyebrow.textContent = "NEW INSTANCE";
+  elements.crawlerDialogTitle.textContent = "新建爬虫";
+  elements.submitCrawler.textContent = "创建实例";
   elements.createError.textContent = "";
-  elements.createDialog.showModal();
+  elements.crawlerDialog.showModal();
 });
 
 elements.refreshButton.addEventListener("click", async () => {
@@ -216,10 +245,30 @@ elements.imagePreviewDialog.addEventListener("click", event => {
 elements.createForm.addEventListener("submit", async event => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(elements.createForm));
+  const payload = {
+    user_data_dir: data.user_data_dir,
+    image_strategy: data.image_strategy,
+    proxy: {
+      url: data.proxy_url,
+      user: data.proxy_user,
+      password: data.proxy_password,
+    },
+  };
   try {
-    await api("/api/crawlers", { method: "POST", body: JSON.stringify(data) });
-    elements.createDialog.close();
-    showToast("爬虫创建成功");
+    if (state.editingCrawlerId) {
+      await api(`/api/crawlers/${encodeURIComponent(state.editingCrawlerId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await api("/api/crawlers", {
+        method: "POST",
+        body: JSON.stringify({ crawler_id: data.crawler_id, ...payload }),
+      });
+    }
+    elements.crawlerDialog.close();
+    showToast(state.editingCrawlerId ? "爬虫配置已更新" : "爬虫创建成功");
+    state.editingCrawlerId = null;
     await loadData(true);
   } catch (error) {
     elements.createError.textContent = error.message;

@@ -9,19 +9,51 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 HEARTBEAT_TIMEOUT = 60
 BASE_DIR = Path(__file__).resolve().parent
 
 
+class ProxyConfig(BaseModel):
+    url: str = Field(default="", max_length=2048)
+    user: str = Field(default="", max_length=256)
+    password: str = Field(default="", max_length=256)
+
+    @field_validator("url", "user")
+    @classmethod
+    def strip_value(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_credentials(self):
+        if not self.url and (self.user or self.password):
+            raise ValueError("填写代理账号或密码时必须填写代理 URL")
+        return self
+
+
 class CrawlerCreate(BaseModel):
     crawler_id: str = Field(min_length=1, max_length=64)
     user_data_dir: str = Field(min_length=1, max_length=256)
     image_strategy: str = Field(default="None", max_length=64)
+    proxy: ProxyConfig = Field(default_factory=ProxyConfig)
 
     @field_validator("crawler_id", "user_data_dir", "image_strategy")
+    @classmethod
+    def strip_value(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("不能为空")
+        return value
+
+
+class CrawlerUpdate(BaseModel):
+    user_data_dir: str = Field(min_length=1, max_length=256)
+    image_strategy: str = Field(default="None", max_length=64)
+    proxy: ProxyConfig = Field(default_factory=ProxyConfig)
+
+    @field_validator("user_data_dir", "image_strategy")
     @classmethod
     def strip_value(cls, value: str) -> str:
         value = value.strip()
@@ -138,6 +170,20 @@ async def require_crawler(request: Request, crawler_id: str) -> dict:
     if not crawler:
         raise HTTPException(status_code=404, detail="爬虫不存在")
     return crawler
+
+
+@app.put("/api/crawlers/{crawler_id}")
+async def update_crawler(crawler_id: str, payload: CrawlerUpdate, request: Request):
+    crawler = await require_crawler(request, crawler_id)
+    last_log = await request.app.state.db.log.find_one(
+        {"crawler_id": crawler_id}, sort=[("timestamp", -1)]
+    )
+    if crawler_status(last_log) in {"running", "idle"}:
+        raise HTTPException(status_code=409, detail="请先停止爬虫再编辑配置")
+
+    updates = payload.model_dump()
+    await request.app.state.db.crawlers.update_one({"_id": crawler["_id"]}, {"$set": updates})
+    return {**serialize_document(crawler), **updates, "status": crawler_status(last_log)}
 
 
 @app.post("/api/crawlers/{crawler_id}/launch")

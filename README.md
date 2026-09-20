@@ -22,7 +22,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-启动后访问 <http://localhost:8000>。WebUI 支持创建和查看爬虫、启动/停止实例、跳转页面、抓取首页以及查看实时日志。
+启动后访问 <http://localhost:8600>。WebUI 支持创建、编辑和查看爬虫，启动/停止实例、跳转页面、抓取首页以及查看实时日志。爬虫配置只能在实例停止后编辑。
 
 ## 开发模式
 

@@ -40,13 +40,16 @@ class Crawler:
         await self.log("Starting")
         self.user_data_dir=self.config['user_data_dir']
 
-        proxy={
-            "server": "socks5h://host.docker.internal:7860",
-            "username": "spider",
-            "password": "rainbow"
-            }
+        proxy_config = self.config.get("proxy", {})
+        proxy = None
+        if proxy_config.get("url"):
+            proxy = {"server": proxy_config["url"]}
+            if proxy_config.get("user"):
+                proxy["username"] = proxy_config["user"]
+            if proxy_config.get("password"):
+                proxy["password"] = proxy_config["password"]
 
-        async with AsyncCamoufox(window=(1282, 855), headless="virtual",persistent_context=True,user_data_dir=f"./{self.user_data_dir}") as context:
+        async with AsyncCamoufox(window=(1282, 855), headless="virtual",persistent_context=True,user_data_dir=f"./{self.user_data_dir}",proxy=proxy) as context:
             page = await context.new_page()
 
             await self.log("Started")

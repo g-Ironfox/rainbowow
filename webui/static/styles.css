@@ -141,6 +141,8 @@ dialog::backdrop { background: rgba(18, 27, 22, .6); backdrop-filter: blur(3px);
 dialog form { padding: 22px; }
 .dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .dialog-heading h2 { margin: 3px 0 0; font-size: 22px; }
+fieldset { margin: 18px 0 0; padding: 2px 14px 14px; border: 1px solid var(--line); }
+legend { padding: 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
 label { display: grid; gap: 7px; margin-top: 14px; font-size: 13px; font-weight: 600; }
 input, dialog select { width: 100%; height: 42px; padding: 0 11px; color: var(--ink); background: #fff; border: 1px solid #bdc7bf; outline: 0; }
 input:focus, dialog select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217,67,67,.1); }

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260920-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260920-4">
 </head>
 <body>
   <header class="topbar">
@@ -73,14 +73,20 @@
     </div>
   </main>
 
-  <dialog id="createDialog">
+  <dialog id="crawlerDialog">
     <form id="createForm" method="dialog">
-      <div class="dialog-heading"><div><span class="eyebrow">NEW INSTANCE</span><h2>新建爬虫</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
+      <div class="dialog-heading"><div><span id="crawlerDialogEyebrow" class="eyebrow">NEW INSTANCE</span><h2 id="crawlerDialogTitle">新建爬虫</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
       <label>爬虫 ID<input name="crawler_id" required maxlength="64" placeholder="例如 xhs_TEL7236"></label>
       <label>用户数据目录<input name="user_data_dir" required maxlength="256" placeholder="例如 xhs_TEL7236"></label>
       <label>图片策略<select name="image_strategy"><option value="None">None</option><option value="Download">Download</option></select></label>
+      <fieldset>
+        <legend>代理</legend>
+        <label>URL<input name="proxy_url" maxlength="2048" placeholder="host:port"></label>
+        <label>用户名<input name="proxy_user" maxlength="256" autocomplete="username"></label>
+        <label>密码<input name="proxy_password" type="password" maxlength="256" autocomplete="new-password"></label>
+      </fieldset>
       <p id="createError" class="form-error"></p>
-      <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button id="submitCreate" type="submit" value="default" class="primary-button">创建实例</button></div>
+      <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button id="submitCrawler" type="submit" value="default" class="primary-button">创建实例</button></div>
     </form>
   </dialog>
 
@@ -100,6 +106,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260920-2" defer></script>
+  <script src="/static/app.js?v=20260920-4" defer></script>
 </body>
 </html>
