@@ -1,4 +1,13 @@
-const state = { crawlers: [], busy: false };
+const state = {
+  crawlers: [],
+  busy: false,
+  crawlerMarkup: null,
+  logMarkup: null,
+  filterMarkup: null,
+  firstCrawlerRender: true,
+  paused: false,
+  refreshTimer: null,
+};
 
 const elements = {
   crawlerList: document.querySelector("#crawlerList"),
@@ -8,8 +17,11 @@ const elements = {
   totalCount: document.querySelector("#totalCount"),
   runningCount: document.querySelector("#runningCount"),
   idleCount: document.querySelector("#idleCount"),
-  healthDot: document.querySelector("#healthDot"),
-  healthText: document.querySelector("#healthText"),
+  lastRefresh: document.querySelector("#lastRefresh"),
+  refreshState: document.querySelector("#refreshState"),
+  refreshInterval: document.querySelector("#refreshInterval"),
+  pauseButton: document.querySelector("#pauseButton"),
+  refreshButton: document.querySelector("#refreshButton"),
   createDialog: document.querySelector("#createDialog"),
   createForm: document.querySelector("#createForm"),
   createError: document.querySelector("#createError"),
@@ -52,13 +64,13 @@ function renderCrawlers() {
   elements.runningCount.textContent = state.crawlers.filter(item => item.status === "running").length;
   elements.idleCount.textContent = state.crawlers.filter(item => item.status === "idle").length;
   elements.emptyState.hidden = state.crawlers.length > 0;
-  elements.crawlerList.innerHTML = state.crawlers.map((crawler, index) => {
+  const crawlerMarkup = state.crawlers.map(crawler => {
     const active = ["running", "idle"].includes(crawler.status);
     const lastMessage = crawler.last_log
       ? `${crawler.last_log.message}${crawler.last_log.detail ? ` · ${crawler.last_log.detail}` : ""}`
       : "暂无日志";
     return `
-      <article class="crawler-card" style="animation-delay:${index * 35}ms">
+      <article class="crawler-card">
         <div class="crawler-title">
           <span class="status-dot ${crawler.status}"></span>
           <div><strong>${escapeHtml(crawler.crawler_id)}</strong><span>${statusLabels[crawler.status]}</span></div>
@@ -75,19 +87,38 @@ function renderCrawlers() {
         </div>
       </article>`;
   }).join("");
+  if (crawlerMarkup !== state.crawlerMarkup) {
+    elements.crawlerList.innerHTML = crawlerMarkup;
+    if (state.firstCrawlerRender) {
+      elements.crawlerList.querySelectorAll(".crawler-card").forEach((card, index) => {
+        card.classList.add("reveal");
+        card.style.animationDelay = `${index * 35}ms`;
+      });
+    }
+    state.crawlerMarkup = crawlerMarkup;
+  }
+  state.firstCrawlerRender = false;
 
   const selected = elements.logFilter.value;
-  elements.logFilter.innerHTML = `<option value="">全部爬虫</option>${state.crawlers.map(crawler => `<option value="${escapeHtml(crawler.crawler_id)}">${escapeHtml(crawler.crawler_id)}</option>`).join("")}`;
-  if (state.crawlers.some(crawler => crawler.crawler_id === selected)) elements.logFilter.value = selected;
+  const filterMarkup = `<option value="">全部爬虫</option>${state.crawlers.map(crawler => `<option value="${escapeHtml(crawler.crawler_id)}">${escapeHtml(crawler.crawler_id)}</option>`).join("")}`;
+  if (filterMarkup !== state.filterMarkup) {
+    elements.logFilter.innerHTML = filterMarkup;
+    state.filterMarkup = filterMarkup;
+    if (state.crawlers.some(crawler => crawler.crawler_id === selected)) elements.logFilter.value = selected;
+  }
 }
 
 function renderLogs(logs) {
-  elements.logList.innerHTML = logs.length ? logs.map(log => `
+  const logMarkup = logs.length ? logs.map(log => `
     <div class="log-entry ${String(log.message).toLowerCase()}">
       <span class="log-time">${formatTime(log.timestamp)}</span>
       <span class="log-crawler" title="${escapeHtml(log.crawler_id)}">${escapeHtml(log.crawler_id)}</span>
       <span class="log-message"><strong>${escapeHtml(log.message)}</strong>${escapeHtml(log.detail || "")}</span>
     </div>`).join("") : `<div class="empty-state"><strong>暂无日志</strong></div>`;
+  if (logMarkup !== state.logMarkup) {
+    elements.logList.innerHTML = logMarkup;
+    state.logMarkup = logMarkup;
+  }
 }
 
 async function loadData(silent = false) {
@@ -102,11 +133,12 @@ async function loadData(silent = false) {
     state.crawlers = crawlers;
     renderCrawlers();
     renderLogs(logs);
-    elements.healthDot.className = "health-dot online";
-    elements.healthText.textContent = "服务正常";
+    elements.lastRefresh.textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    elements.refreshState.textContent = state.paused ? "自动刷新已暂停" : "自动刷新已开启";
+    elements.refreshState.classList.remove("error");
   } catch (error) {
-    elements.healthDot.className = "health-dot offline";
-    elements.healthText.textContent = "连接中断";
+    elements.refreshState.textContent = "连接中断";
+    elements.refreshState.classList.add("error");
     if (!silent) showToast(error.message, true);
   } finally {
     state.busy = false;
@@ -141,7 +173,22 @@ document.querySelector("#createButton").addEventListener("click", () => {
   elements.createDialog.showModal();
 });
 
-document.querySelector("#refreshButton").addEventListener("click", () => loadData());
+elements.refreshButton.addEventListener("click", async () => {
+  await loadData();
+  scheduleAutoRefresh();
+});
+elements.refreshInterval.addEventListener("change", scheduleAutoRefresh);
+elements.pauseButton.addEventListener("click", () => {
+  state.paused = !state.paused;
+  elements.pauseButton.classList.toggle("active", state.paused);
+  elements.pauseButton.querySelector(".pause-icon").classList.toggle("play", state.paused);
+  elements.pauseButton.title = state.paused ? "继续自动刷新" : "暂停自动刷新";
+  elements.pauseButton.setAttribute("aria-label", elements.pauseButton.title);
+  elements.refreshState.textContent = state.paused ? "自动刷新已暂停" : "自动刷新已开启";
+  elements.refreshState.classList.remove("error");
+  if (state.paused) scheduleAutoRefresh();
+  else loadData(true).finally(scheduleAutoRefresh);
+});
 elements.logFilter.addEventListener("change", () => loadData());
 
 elements.createForm.addEventListener("submit", async event => {
@@ -176,5 +223,13 @@ document.querySelectorAll("dialog .secondary-button, dialog .close-button").forE
   });
 });
 
-loadData();
-setInterval(() => loadData(true), 5000);
+function scheduleAutoRefresh() {
+  window.clearTimeout(state.refreshTimer);
+  if (state.paused) return;
+  state.refreshTimer = window.setTimeout(async () => {
+    await loadData(true);
+    scheduleAutoRefresh();
+  }, Number(elements.refreshInterval.value));
+}
+
+loadData().finally(scheduleAutoRefresh);
