@@ -35,6 +35,9 @@ const elements = {
   crawlerDialogTitle: document.querySelector("#crawlerDialogTitle"),
   submitCrawler: document.querySelector("#submitCrawler"),
   deleteCrawler: document.querySelector("#deleteCrawler"),
+  timingDialog: document.querySelector("#timingDialog"),
+  timingForm: document.querySelector("#timingForm"),
+  timingError: document.querySelector("#timingError"),
   gotoDialog: document.querySelector("#gotoDialog"),
   gotoForm: document.querySelector("#gotoForm"),
   gotoError: document.querySelector("#gotoError"),
@@ -115,6 +118,7 @@ function renderCrawlers() {
         </div>
         <div class="crawler-actions">
           <button class="action-button" data-action="edit" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "disabled" : ""}>编辑</button>
+          <button class="action-button" data-action="timing" data-id="${escapeHtml(crawler.crawler_id)}">等待设置</button>
           <button class="action-button" data-action="launch" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "disabled" : ""}>启动</button>
           <button class="action-button danger" data-action="terminate" data-id="${escapeHtml(crawler.crawler_id)}" ${active ? "" : "disabled"}>停止</button>
           <div class="action-menu">
@@ -228,6 +232,22 @@ elements.crawlerList.addEventListener("click", async event => {
     elements.deleteCrawler.hidden = false;
     elements.createError.textContent = "";
     elements.crawlerDialog.showModal();
+    return;
+  }
+  if (action === "timing") {
+    const crawler = state.crawlers.find(item => item.crawler_id === id);
+    if (!crawler) return;
+    elements.timingForm.elements.crawler_id.value = id;
+    elements.timingForm.elements.wait_base_seconds.value = crawler.wait_base_seconds ?? 5;
+    elements.timingForm.elements.wait_random_rate.value = crawler.wait_random_rate ?? 0.6;
+    elements.timingForm.elements.wait_initial_multiplier.value = crawler.wait_initial_multiplier ?? 1.0;
+    elements.timingForm.elements.wait_scroll_multiplier.value = crawler.wait_scroll_multiplier ?? 0.8;
+    elements.timingForm.elements.wait_post_multiplier.value = crawler.wait_post_multiplier ?? 0.4;
+    elements.timingForm.elements.wait_detail_open_multiplier.value = crawler.wait_detail_open_multiplier ?? 0.6;
+    elements.timingForm.elements.wait_detail_close_multiplier.value = crawler.wait_detail_close_multiplier ?? 0.6;
+    elements.timingForm.elements.wait_error_multiplier.value = crawler.wait_error_multiplier ?? 0.6;
+    elements.timingError.textContent = "";
+    elements.timingDialog.showModal();
     return;
   }
   if (action === "goto") {
@@ -371,6 +391,31 @@ elements.createForm.addEventListener("submit", async event => {
     await loadData(true);
   } catch (error) {
     elements.createError.textContent = error.message;
+  }
+});
+
+elements.timingForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(elements.timingForm));
+  try {
+    await api(`/api/crawlers/${encodeURIComponent(data.crawler_id)}/timing`, {
+      method: "PUT",
+      body: JSON.stringify({
+        wait_base_seconds: Number(data.wait_base_seconds),
+        wait_random_rate: Number(data.wait_random_rate),
+        wait_initial_multiplier: Number(data.wait_initial_multiplier),
+        wait_scroll_multiplier: Number(data.wait_scroll_multiplier),
+        wait_post_multiplier: Number(data.wait_post_multiplier),
+        wait_detail_open_multiplier: Number(data.wait_detail_open_multiplier),
+        wait_detail_close_multiplier: Number(data.wait_detail_close_multiplier),
+        wait_error_multiplier: Number(data.wait_error_multiplier),
+      }),
+    });
+    elements.timingDialog.close();
+    showToast("等待时间已立即应用");
+    await loadData(true);
+  } catch (error) {
+    elements.timingError.textContent = error.message;
   }
 });
 

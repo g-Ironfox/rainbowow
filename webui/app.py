@@ -37,6 +37,14 @@ class CrawlerCreate(BaseModel):
     crawler_id: str = Field(min_length=1, max_length=64)
     user_data_dir: str = Field(min_length=1, max_length=256)
     image_strategy: Literal["none", "ban", "blank", "cache"] = "none"
+    wait_base_seconds: float = Field(default=5, ge=0, le=300)
+    wait_random_rate: float = Field(default=0.6, ge=0, le=10)
+    wait_initial_multiplier: float = Field(default=1.0, ge=0, le=10)
+    wait_scroll_multiplier: float = Field(default=0.8, ge=0, le=10)
+    wait_post_multiplier: float = Field(default=0.4, ge=0, le=10)
+    wait_detail_open_multiplier: float = Field(default=0.6, ge=0, le=10)
+    wait_detail_close_multiplier: float = Field(default=0.6, ge=0, le=10)
+    wait_error_multiplier: float = Field(default=0.6, ge=0, le=10)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
 
     @field_validator("crawler_id", "user_data_dir")
@@ -60,6 +68,17 @@ class CrawlerUpdate(BaseModel):
         if not value:
             raise ValueError("不能为空")
         return value
+
+
+class CrawlerTimingUpdate(BaseModel):
+    wait_base_seconds: float = Field(ge=0, le=300)
+    wait_random_rate: float = Field(ge=0, le=10)
+    wait_initial_multiplier: float = Field(ge=0, le=10)
+    wait_scroll_multiplier: float = Field(ge=0, le=10)
+    wait_post_multiplier: float = Field(ge=0, le=10)
+    wait_detail_open_multiplier: float = Field(ge=0, le=10)
+    wait_detail_close_multiplier: float = Field(ge=0, le=10)
+    wait_error_multiplier: float = Field(ge=0, le=10)
 
 
 class GotoAction(BaseModel):
@@ -181,6 +200,14 @@ async def update_crawler(crawler_id: str, payload: CrawlerUpdate, request: Reque
     updates = payload.model_dump()
     await request.app.state.db.crawlers.update_one({"_id": crawler["_id"]}, {"$set": updates})
     return {**serialize_document(crawler), **updates, "status": current_status}
+
+
+@app.put("/api/crawlers/{crawler_id}/timing")
+async def update_crawler_timing(crawler_id: str, payload: CrawlerTimingUpdate, request: Request):
+    crawler = await require_crawler(request, crawler_id)
+    updates = payload.model_dump()
+    await request.app.state.db.crawlers.update_one({"_id": crawler["_id"]}, {"$set": updates})
+    return {**serialize_document(crawler), **updates}
 
 
 @app.delete("/api/crawlers/{crawler_id}")

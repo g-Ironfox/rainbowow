@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260921-13">
+  <link rel="stylesheet" href="/static/styles.css?v=20260921-16">
 </head>
 <body>
   <header class="topbar">
@@ -97,6 +97,28 @@
     </form>
   </dialog>
 
+  <dialog id="timingDialog">
+    <form id="timingForm" method="dialog">
+      <div class="dialog-heading"><div><span class="eyebrow">WAIT TIMING</span><h2>等待时间</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
+      <input type="hidden" name="crawler_id">
+      <div class="timing-fields">
+        <label>基准时间（秒）<input name="wait_base_seconds" type="number" required min="0" max="300" step="0.1"></label>
+        <label>泛化率<input name="wait_random_rate" type="number" required min="0" max="10" step="0.1"></label>
+      </div>
+      <fieldset class="multiplier-fields">
+        <legend>调用点系数</legend>
+        <label>首次加载<input name="wait_initial_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+        <label>滚动加载<input name="wait_scroll_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+        <label>帖子交互<input name="wait_post_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+        <label>打开详情<input name="wait_detail_open_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+        <label>关闭详情<input name="wait_detail_close_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+        <label>异常恢复<input name="wait_error_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+      </fieldset>
+      <p id="timingError" class="form-error"></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button type="submit" value="default" class="primary-button">立即应用</button></div>
+    </form>
+  </dialog>
+
   <dialog id="gotoDialog">
     <form id="gotoForm" method="dialog">
       <div class="dialog-heading"><div><span class="eyebrow">NAVIGATE</span><h2>跳转页面</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
@@ -113,6 +135,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260921-13" defer></script>
+  <script src="/static/app.js?v=20260921-17" defer></script>
 </body>
 </html>

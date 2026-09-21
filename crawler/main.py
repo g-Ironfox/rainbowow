@@ -185,6 +185,21 @@ class Crawler:
         with open(path, "wb") as file:
             file.write(data)
 
+    async def wait(self, multiplier_key, default_multiplier):
+        timing = await DB.crawler_db.find_one(
+            {"crawler_id": self.cid},
+            {
+                "wait_base_seconds": 1,
+                "wait_random_rate": 1,
+                multiplier_key: 1,
+            },
+        )
+        base_seconds = timing.get("wait_base_seconds", 5)
+        random_rate = timing.get("wait_random_rate", 0.6)
+        multiplier = timing.get(multiplier_key, default_multiplier)
+        delay = base_seconds + base_seconds * random_rate * random.random()
+        await asyncio.sleep(delay * multiplier)
+
     async def log(self, message , detail="",screenshot_page=None):
         img_str=''
         if screenshot_page:
@@ -274,13 +289,13 @@ class XhsCrawler(Crawler):
         stagnant_rounds = 0
         max_posts = self.config.get("surface_max_posts", 50)
 
-        await asyncio.sleep(random.uniform(4, 7))
+        await self.wait("wait_initial_multiplier", 1.0)
 
         while len(result) < max_posts and stagnant_rounds < 3:
             total = await posts.count()
             if post_index >= total:
                 await page.mouse.wheel(0, random.randint(900, 1400))
-                await asyncio.sleep(random.uniform(3, 6))
+                await self.wait("wait_scroll_multiplier", 0.8)
                 new_total = await posts.count()
                 stagnant_rounds = stagnant_rounds + 1 if new_total <= total else 0
                 continue
@@ -306,7 +321,7 @@ class XhsCrawler(Crawler):
                 random.randint(150, 600),
                 steps=random.randint(8, 24)
             )
-            await asyncio.sleep(random.uniform(1.5, 3))
+            await self.wait("wait_post_multiplier", 0.4)
 
             try:
                 p = await self.grab_info(post)
@@ -319,7 +334,7 @@ class XhsCrawler(Crawler):
                 await post.click(timeout=5000)
                 content = page.locator("#detail-desc")
                 await content.wait_for(timeout=10000, state="visible")
-                await asyncio.sleep(random.uniform(2, 4))
+                await self.wait("wait_detail_open_multiplier", 0.6)
                 await page.screenshot(path=f"log/{self.cid}/{datetime.now().strftime('%Y/%m/%d/%H-%M-%S')}.jpg",type="jpeg",quality=50)
                 try:
                     title = page.locator("#detail-title")
@@ -339,12 +354,12 @@ class XhsCrawler(Crawler):
 
                 await page.keyboard.press('Escape')
                 await content.wait_for(timeout=5000, state="hidden")
-                await asyncio.sleep(random.uniform(2, 4))
+                await self.wait("wait_detail_close_multiplier", 0.6)
                 
             except Exception as e:
                 await self.log('Warning',detail=f'Error: Grab {i} Failed: {e}',screenshot_page=page)
                 await page.keyboard.press('Escape')
-                await asyncio.sleep(random.uniform(2, 4))
+                await self.wait("wait_error_multiplier", 0.6)
                 continue
         return result
 
