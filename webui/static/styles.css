@@ -138,9 +138,11 @@ main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 
 .empty-state strong { color: var(--ink); }
 .empty-state span { margin-top: 5px; font-size: 13px; }
 .log-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
-.log-entry { display: grid; grid-template-columns: 64px 72px minmax(0,1fr); gap: 9px; padding: 10px 14px; border-bottom: 1px solid #efeff2; font: 11px "IBM Plex Mono"; }
+.log-entry { display: grid; grid-template-columns: 72px 72px minmax(0,1fr); gap: 9px; padding: 10px 14px; border-bottom: 1px solid #efeff2; font: 11px "IBM Plex Mono"; }
 .log-entry:hover { background: #fafafd; }
-.log-time, .log-crawler { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-time, .log-crawler { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.log-time { line-height: 1.45; white-space: pre-line; }
+.log-crawler { white-space: nowrap; }
 .log-message { min-width: 0; display: grid; gap: 8px; overflow-wrap: anywhere; }
 .log-message strong { margin-right: 6px; font-weight: 600; }
 .thumbnail-button { width: fit-content; padding: 0; border: 0; border-radius: 6px; background: transparent; }

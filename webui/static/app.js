@@ -71,6 +71,20 @@ function formatTime(timestamp) {
   return new Date(timestamp * 1000).toLocaleTimeString("zh-CN", { hour12: false });
 }
 
+function formatDateTime(timestamp) {
+  if (!timestamp) return "---- -- --\n--:--:--";
+  const date = new Date(timestamp * 1000);
+  const parts = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+    String(date.getHours()).padStart(2, "0"),
+    String(date.getMinutes()).padStart(2, "0"),
+    String(date.getSeconds()).padStart(2, "0"),
+  ];
+  return `${parts[0]}-${parts[1]}-${parts[2]}\n${parts[3]}:${parts[4]}:${parts[5]}`;
+}
+
 function closeCrawlerActionMenus() {
   elements.crawlerList.querySelectorAll(".action-menu.open").forEach(menu => {
     menu.classList.remove("open");
@@ -107,7 +121,7 @@ function renderCrawlers() {
             <button class="action-button action-menu-trigger" type="button" data-menu-toggle aria-haspopup="menu" aria-expanded="false" ${active ? "" : "disabled"}>操作<span class="action-menu-chevron" aria-hidden="true"></span></button>
             <div class="action-menu-list" role="menu" hidden>
               <button type="button" role="menuitem" data-action="goto" data-id="${escapeHtml(crawler.crawler_id)}">跳转</button>
-              <button type="button" role="menuitem" data-action="surface" data-id="${escapeHtml(crawler.crawler_id)}">抓取首页</button>
+              <button type="button" role="menuitem" data-action="surface" data-id="${escapeHtml(crawler.crawler_id)}">浏览</button>
               <button type="button" role="menuitem" data-action="screenshot" data-id="${escapeHtml(crawler.crawler_id)}">截屏</button>
             </div>
           </div>
@@ -138,7 +152,7 @@ function renderCrawlers() {
 function renderLogs(logs) {
   const logMarkup = logs.length ? logs.map(log => `
     <div class="log-entry ${String(log.message).toLowerCase()}">
-      <span class="log-time">${formatTime(log.timestamp)}</span>
+      <span class="log-time">${formatDateTime(log.timestamp)}</span>
       <span class="log-crawler" title="${escapeHtml(log.crawler_id)}">${escapeHtml(log.crawler_id)}</span>
       <span class="log-message">
         <span><strong>${escapeHtml(log.message)}</strong>${escapeHtml(log.detail || "")}</span>

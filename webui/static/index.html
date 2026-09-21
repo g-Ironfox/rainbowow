@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260920-11">
+  <link rel="stylesheet" href="/static/styles.css?v=20260921-13">
 </head>
 <body>
   <header class="topbar">
@@ -101,7 +101,7 @@
     <form id="gotoForm" method="dialog">
       <div class="dialog-heading"><div><span class="eyebrow">NAVIGATE</span><h2>跳转页面</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
       <input type="hidden" name="crawler_id">
-      <label>目标 URL<input name="url" type="url" required placeholder="https://www.xiaohongshu.com/explore"></label>
+      <label>目标 URL<input name="url" type="url" required value="https://www.xiaohongshu.com/explore/" placeholder="https://www.xiaohongshu.com/explore/"></label>
       <p id="gotoError" class="form-error"></p>
       <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button type="submit" value="default" class="primary-button">发送动作</button></div>
     </form>
@@ -113,6 +113,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260920-11" defer></script>
+  <script src="/static/app.js?v=20260921-13" defer></script>
 </body>
 </html>
