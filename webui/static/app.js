@@ -8,6 +8,8 @@ const state = {
   paused: false,
   refreshTimer: null,
   editingCrawlerId: null,
+  currentView: location.hash === "#/tasks" ? "tasks" : "fleet",
+  taskMarkup: null,
 };
 
 const elements = {
@@ -43,10 +45,26 @@ const elements = {
   gotoError: document.querySelector("#gotoError"),
   imagePreviewDialog: document.querySelector("#imagePreviewDialog"),
   imagePreview: document.querySelector("#imagePreview"),
+  fleetView: document.querySelector("#fleetView"),
+  tasksView: document.querySelector("#tasksView"),
+  taskList: document.querySelector("#taskList"),
+  taskEmptyState: document.querySelector("#taskEmptyState"),
+  taskCrawlerFilter: document.querySelector("#taskCrawlerFilter"),
+  taskStatusFilter: document.querySelector("#taskStatusFilter"),
+  taskCount: document.querySelector("#taskCount"),
+  taskSuccessRate: document.querySelector("#taskSuccessRate"),
+  taskAverageExecution: document.querySelector("#taskAverageExecution"),
+  taskWaitRatio: document.querySelector("#taskWaitRatio"),
+  taskDetailDialog: document.querySelector("#taskDetailDialog"),
+  taskDetailTitle: document.querySelector("#taskDetailTitle"),
+  taskDetailContent: document.querySelector("#taskDetailContent"),
   toast: document.querySelector("#toast"),
 };
 
 const statusLabels = { running: "运行中", idle: "空闲", stopped: "已停止", error: "状态异常" };
+const taskStatusLabels = { queued: "排队中", running: "执行中", completed: "已完成", failed: "失败" };
+const operationStatusLabels = { running: "执行中", completed: "已完成", failed: "失败", skipped: "已跳过" };
+const waitStageLabels = { initial: "首次加载", scroll: "滚动加载", post: "帖子交互", detail_open: "打开详情", detail_close: "关闭详情", error_recovery: "异常恢复" };
 
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
@@ -86,6 +104,12 @@ function formatDateTime(timestamp) {
     String(date.getSeconds()).padStart(2, "0"),
   ];
   return `${parts[0]}-${parts[1]}-${parts[2]}\n${parts[3]}:${parts[4]}:${parts[5]}`;
+}
+
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return "--";
+  if (seconds < 60) return `${seconds.toLocaleString("zh-CN", { maximumFractionDigits: 1 })}s`;
+  return `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(0)}s`;
 }
 
 function closeCrawlerActionMenus() {
@@ -147,12 +171,94 @@ function renderCrawlers() {
   state.firstCrawlerRender = false;
 
   const selected = elements.logFilter.value;
+  const selectedTaskCrawler = elements.taskCrawlerFilter.value;
   const filterMarkup = `<option value="">全部爬虫</option>${state.crawlers.map(crawler => `<option value="${escapeHtml(crawler.crawler_id)}">${escapeHtml(crawler.crawler_id)}</option>`).join("")}`;
   if (filterMarkup !== state.filterMarkup) {
     elements.logFilter.innerHTML = filterMarkup;
+    elements.taskCrawlerFilter.innerHTML = filterMarkup;
     state.filterMarkup = filterMarkup;
     if (state.crawlers.some(crawler => crawler.crawler_id === selected)) elements.logFilter.value = selected;
+    if (state.crawlers.some(crawler => crawler.crawler_id === selectedTaskCrawler)) elements.taskCrawlerFilter.value = selectedTaskCrawler;
   }
+}
+
+function renderTasks(tasks, summary) {
+  elements.taskCount.textContent = summary.task_count.toLocaleString("zh-CN");
+  elements.taskSuccessRate.textContent = `${(summary.success_rate * 100).toFixed(1)}%`;
+  elements.taskAverageExecution.textContent = formatDuration(summary.average_execution_seconds);
+  elements.taskWaitRatio.textContent = `${(summary.wait_ratio * 100).toFixed(1)}%`;
+  elements.taskEmptyState.hidden = tasks.length > 0;
+  const markup = tasks.map(task => `
+    <tr tabindex="0" data-task-id="${escapeHtml(task._id)}">
+      <td>${formatDateTime(task.enqueued_at).replace("\n", " ")}</td>
+      <td title="${escapeHtml(task.crawler_id)}">${escapeHtml(task.crawler_id)}</td>
+      <td><span class="task-status ${task.status}">${taskStatusLabels[task.status] || escapeHtml(task.status)}</span></td>
+      <td>${formatDuration(task.queue_seconds)}</td>
+      <td>${formatDuration(task.execution_seconds)}</td>
+      <td>${formatDuration(task.wait_seconds)} <small>${task.wait_count || 0} 次</small></td>
+      <td>${formatDuration(task.active_seconds)}</td>
+      <td>${task.operation_count || 0}</td>
+      <td>${task.result?.inserted_count ?? "--"}</td>
+    </tr>`).join("");
+  if (markup !== state.taskMarkup) {
+    elements.taskList.innerHTML = markup;
+    state.taskMarkup = markup;
+  }
+}
+
+async function loadTasks(silent = false) {
+  try {
+    const crawlerId = elements.taskCrawlerFilter.value;
+    const taskStatus = elements.taskStatusFilter.value;
+    const params = new URLSearchParams({ limit: "50" });
+    const summaryParams = new URLSearchParams();
+    if (crawlerId) {
+      params.set("crawler_id", crawlerId);
+      summaryParams.set("crawler_id", crawlerId);
+    }
+    if (taskStatus) params.set("status", taskStatus);
+    const [tasks, summary] = await Promise.all([
+      api(`/api/tasks?${params}`),
+      api(`/api/tasks/summary?${summaryParams}`),
+    ]);
+    renderTasks(tasks.items, summary);
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
+    throw error;
+  }
+}
+
+function renderTaskDetail(task) {
+  const operations = task.operations || [];
+  const waits = task.waits || [];
+  elements.taskDetailTitle.textContent = `${task.crawler_id} · ${taskStatusLabels[task.status] || task.status}`;
+  elements.taskDetailContent.innerHTML = `
+    <div class="task-detail-metrics">
+      <div><span>排队</span><strong>${formatDuration(task.queue_seconds)}</strong></div>
+      <div><span>执行</span><strong>${formatDuration(task.execution_seconds)}</strong></div>
+      <div><span>主动停顿</span><strong>${formatDuration(task.wait_seconds)}</strong></div>
+      <div><span>非停顿</span><strong>${formatDuration(task.active_seconds)}</strong></div>
+    </div>
+    ${task.error ? `<p class="task-error">${escapeHtml(task.error)}</p>` : ""}
+    <section class="task-detail-section"><h3>浏览操作</h3>
+      <div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>#</th><th>帖子</th><th>状态</th><th>总耗时</th><th>停顿</th><th>非停顿</th></tr></thead><tbody>
+        ${operations.length ? operations.map(operation => `<tr><td>${operation.index + 1}</td><td title="${escapeHtml(operation.post_id || "")}">${escapeHtml(operation.post_id || `页面项 ${operation.post_index}`)}</td><td>${operationStatusLabels[operation.status] || escapeHtml(operation.status)}</td><td>${formatDuration(operation.elapsed_seconds)}</td><td>${formatDuration(operation.wait_seconds)}</td><td>${formatDuration(operation.active_seconds)}</td></tr>`).join("") : `<tr><td colspan="6">暂无浏览操作</td></tr>`}
+      </tbody></table></div>
+    </section>
+    <section class="task-detail-section"><h3>停顿明细</h3>
+      <div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>阶段</th><th>浏览操作</th><th>计划</th><th>实际</th></tr></thead><tbody>
+        ${waits.length ? waits.map(wait => `<tr><td>${waitStageLabels[wait.stage] || escapeHtml(wait.stage)}</td><td>${wait.operation_index === null ? "任务级" : `#${wait.operation_index + 1}`}</td><td>${formatDuration(wait.planned_seconds)}</td><td>${formatDuration(wait.actual_seconds)}</td></tr>`).join("") : `<tr><td colspan="4">暂无停顿</td></tr>`}
+      </tbody></table></div>
+    </section>`;
+}
+
+function setView(view, updateHash = true) {
+  state.currentView = view;
+  elements.fleetView.hidden = view !== "fleet";
+  elements.tasksView.hidden = view !== "tasks";
+  document.querySelectorAll(".primary-nav button").forEach(button => button.classList.toggle("active", button.dataset.view === view));
+  if (updateHash) history.replaceState(null, "", view === "tasks" ? "#/tasks" : "#/fleet");
+  if (view === "tasks") loadTasks(true);
 }
 
 function renderLogs(logs) {
@@ -188,6 +294,7 @@ async function loadData(silent = false) {
     elements.lastRefresh.textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
     elements.refreshState.textContent = state.paused ? "自动刷新已暂停" : "自动刷新已开启";
     elements.refreshState.classList.remove("error");
+    if (state.currentView === "tasks") await loadTasks(true);
   } catch (error) {
     elements.refreshState.textContent = "连接中断";
     elements.refreshState.classList.add("error");
@@ -268,6 +375,27 @@ elements.crawlerList.addEventListener("click", async event => {
   } finally {
     button.disabled = false;
   }
+});
+
+document.querySelector(".primary-nav").addEventListener("click", event => {
+  const button = event.target.closest("button[data-view]");
+  if (button) setView(button.dataset.view);
+});
+window.addEventListener("hashchange", () => setView(location.hash === "#/tasks" ? "tasks" : "fleet", false));
+elements.taskCrawlerFilter.addEventListener("change", () => loadTasks());
+elements.taskStatusFilter.addEventListener("change", () => loadTasks());
+elements.taskList.addEventListener("click", async event => {
+  const row = event.target.closest("tr[data-task-id]");
+  if (!row) return;
+  try {
+    renderTaskDetail(await api(`/api/tasks/${encodeURIComponent(row.dataset.taskId)}`));
+    elements.taskDetailDialog.showModal();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+});
+elements.taskList.addEventListener("keydown", event => {
+  if (event.key === "Enter" || event.key === " ") event.target.closest("tr[data-task-id]")?.click();
 });
 
 document.querySelector("#createButton").addEventListener("click", () => {
@@ -525,4 +653,5 @@ function scheduleAutoRefresh() {
   }, Number(elements.refreshInterval.value));
 }
 
+setView(state.currentView, false);
 loadData().finally(scheduleAutoRefresh);

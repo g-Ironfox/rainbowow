@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260921-26">
+  <link rel="stylesheet" href="/static/styles.css?v=20260921-27">
 </head>
 <body>
   <header class="topbar">
@@ -18,6 +18,10 @@
         <span>Crawler Console</span>
       </div>
     </div>
+    <nav class="primary-nav" aria-label="主导航">
+      <button type="button" data-view="fleet" class="active">爬虫实例</button>
+      <button type="button" data-view="tasks">任务分析</button>
+    </nav>
     <div class="refresh-panel">
       <div class="sync-meta">
         <span>最后同步</span>
@@ -47,7 +51,7 @@
     </div>
   </header>
 
-  <main>
+  <main id="fleetView" class="app-view">
     <section class="summary" aria-label="运行概览">
       <div><span>爬虫总数</span><strong id="totalCount">0</strong></div>
       <div><span>运行中</span><strong id="runningCount">0</strong></div>
@@ -76,6 +80,37 @@
         <div id="logList" class="log-list"></div>
       </section>
     </div>
+  </main>
+
+  <main id="tasksView" class="app-view" hidden>
+    <section class="task-summary" aria-label="任务概览">
+      <div><span>任务总数</span><strong id="taskCount">0</strong></div>
+      <div><span>成功率</span><strong id="taskSuccessRate">0%</strong></div>
+      <div><span>平均执行</span><strong id="taskAverageExecution">0s</strong></div>
+      <div><span>停顿占比</span><strong id="taskWaitRatio">0%</strong></div>
+    </section>
+    <section class="task-panel">
+      <div class="section-heading task-heading">
+        <div><span class="eyebrow">TASKS</span><h1>任务分析</h1></div>
+        <div class="task-filters">
+          <select id="taskCrawlerFilter" aria-label="筛选爬虫"><option value="">全部爬虫</option></select>
+          <select id="taskStatusFilter" aria-label="筛选任务状态">
+            <option value="">全部状态</option>
+            <option value="queued">排队中</option>
+            <option value="running">执行中</option>
+            <option value="completed">已完成</option>
+            <option value="failed">失败</option>
+          </select>
+        </div>
+      </div>
+      <div class="task-table-wrap">
+        <table class="task-table">
+          <thead><tr><th>入队时间</th><th>爬虫</th><th>状态</th><th>排队</th><th>执行</th><th>停顿</th><th>非停顿</th><th>操作数</th><th>结果</th></tr></thead>
+          <tbody id="taskList"></tbody>
+        </table>
+        <div id="taskEmptyState" class="empty-state" hidden><strong>暂无任务</strong><span>点击爬虫的“浏览”后，任务会显示在这里。</span></div>
+      </div>
+    </section>
   </main>
 
   <dialog id="crawlerDialog">
@@ -156,7 +191,14 @@
     <img id="imagePreview" alt="截屏大图">
   </dialog>
 
+  <dialog id="taskDetailDialog" class="task-detail-dialog">
+    <div class="task-detail-shell">
+      <div class="dialog-heading"><div><span class="eyebrow">TASK DETAIL</span><h2 id="taskDetailTitle">任务详情</h2></div><button class="close-button" type="button" aria-label="关闭">×</button></div>
+      <div id="taskDetailContent"></div>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260921-20" defer></script>
+  <script src="/static/app.js?v=20260921-21" defer></script>
 </body>
 </html>

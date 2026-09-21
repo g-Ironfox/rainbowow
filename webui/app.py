@@ -96,6 +96,9 @@ class GotoAction(BaseModel):
 def serialize_document(document: dict) -> dict:
     result = dict(document)
     result["_id"] = str(result["_id"])
+    for field in ("action_id", "task_id"):
+        if isinstance(result.get(field), ObjectId):
+            result[field] = str(result[field])
     return result
 
 
@@ -124,6 +127,10 @@ async def lifespan(app: FastAPI):
         port=int(os.getenv("REDIS_PORT", "6379")),
         decode_responses=True,
     )
+    await app.state.db.task.create_index([("enqueued_at", -1)])
+    await app.state.db.task.create_index([("crawler_id", 1), ("enqueued_at", -1)])
+    await app.state.db.task.create_index([("status", 1), ("enqueued_at", -1)])
+    await app.state.db.task.create_index("action_id", unique=True, sparse=True)
     yield
     await app.state.redis.aclose()
     app.state.mongo.close()
@@ -220,6 +227,7 @@ async def delete_crawler(crawler_id: str, request: Request):
     await request.app.state.db.crawlers.delete_one({"_id": crawler["_id"]})
     await request.app.state.db.log.delete_many({"crawler_id": crawler_id})
     await request.app.state.db.action.delete_many({"crawler_id": crawler_id})
+    await request.app.state.db.task.delete_many({"crawler_id": crawler_id})
     await request.app.state.redis.lrem("crawler_queue", 0, crawler_id)
     await request.app.state.redis.delete(
         f"Action_Queue_{crawler_id}",
@@ -271,7 +279,54 @@ async def enqueue_action(
 
 @app.post("/api/crawlers/{crawler_id}/actions/surface")
 async def surface(crawler_id: str, request: Request):
-    return await enqueue_action(request, crawler_id, "surface")
+    await require_crawler(request, crawler_id)
+    enqueued_at = time.time()
+    task_document = {
+        "crawler_id": crawler_id,
+        "type": "surface",
+        "status": "queued",
+        "enqueued_at": enqueued_at,
+        "wait_count": 0,
+        "wait_seconds": 0,
+        "operation_count": 0,
+        "waits": [],
+        "operations": [],
+        "result": {},
+        "error": None,
+    }
+    task_result = await request.app.state.db.task.insert_one(task_document)
+    action_document = {
+        "crawler_id": crawler_id,
+        "action": "surface",
+        "timestamp": enqueued_at,
+        "task_id": task_result.inserted_id,
+    }
+    try:
+        action_result = await request.app.state.db.action.insert_one(action_document)
+        await request.app.state.db.task.update_one(
+            {"_id": task_result.inserted_id},
+            {"$set": {"action_id": action_result.inserted_id}},
+        )
+        await request.app.state.redis.rpush(
+            f"Action_Queue_{crawler_id}", str(action_result.inserted_id)
+        )
+    except Exception as exc:
+        await request.app.state.db.task.update_one(
+            {"_id": task_result.inserted_id},
+            {
+                "$set": {
+                    "status": "failed",
+                    "finished_at": time.time(),
+                    "error": str(exc),
+                }
+            },
+        )
+        raise HTTPException(status_code=503, detail="浏览任务入队失败") from exc
+    return {
+        "message": "浏览任务已入队",
+        "task_id": str(task_result.inserted_id),
+        "action_id": str(action_result.inserted_id),
+    }
 
 
 @app.post("/api/crawlers/{crawler_id}/actions/screenshot")
@@ -315,3 +370,102 @@ async def get_action(action_id: str, request: Request):
     if not action:
         raise HTTPException(status_code=404, detail="动作不存在")
     return serialize_document(action)
+
+
+@app.get("/api/tasks")
+async def list_tasks(
+    request: Request,
+    crawler_id: str | None = None,
+    task_status: Literal["queued", "running", "completed", "failed"] | None = Query(
+        default=None, alias="status"
+    ),
+    limit: int = Query(default=50, ge=1, le=200),
+    before: float | None = None,
+):
+    query = {}
+    if crawler_id:
+        query["crawler_id"] = crawler_id
+    if task_status:
+        query["status"] = task_status
+    if before is not None:
+        query["enqueued_at"] = {"$lt": before}
+    projection = {"waits": 0, "operations": 0}
+    tasks = await request.app.state.db.task.find(query, projection).sort(
+        "enqueued_at", -1
+    ).limit(limit + 1).to_list(limit + 1)
+    has_more = len(tasks) > limit
+    tasks = tasks[:limit]
+    return {
+        "items": [serialize_document(task) for task in tasks],
+        "next_before": tasks[-1]["enqueued_at"] if has_more and tasks else None,
+    }
+
+
+@app.get("/api/tasks/summary")
+async def task_summary(
+    request: Request,
+    crawler_id: str | None = None,
+    from_timestamp: float | None = Query(default=None, alias="from"),
+    to_timestamp: float | None = Query(default=None, alias="to"),
+):
+    match = {}
+    if crawler_id:
+        match["crawler_id"] = crawler_id
+    if from_timestamp is not None or to_timestamp is not None:
+        match["enqueued_at"] = {}
+        if from_timestamp is not None:
+            match["enqueued_at"]["$gte"] = from_timestamp
+        if to_timestamp is not None:
+            match["enqueued_at"]["$lte"] = to_timestamp
+    result = await request.app.state.db.task.aggregate([
+        {"$match": match},
+        {"$group": {
+            "_id": None,
+            "task_count": {"$sum": 1},
+            "completed_count": {"$sum": {"$cond": [{"$eq": ["$status", "completed"]}, 1, 0]}},
+            "failed_count": {"$sum": {"$cond": [{"$eq": ["$status", "failed"]}, 1, 0]}},
+            "average_queue_seconds": {"$avg": {"$cond": [{"$in": ["$status", ["completed", "failed"]]}, "$queue_seconds", None]}},
+            "average_execution_seconds": {"$avg": {"$cond": [{"$in": ["$status", ["completed", "failed"]]}, "$execution_seconds", None]}},
+            "average_wait_seconds": {"$avg": {"$cond": [{"$in": ["$status", ["completed", "failed"]]}, "$wait_seconds", None]}},
+            "average_active_seconds": {"$avg": {"$cond": [{"$in": ["$status", ["completed", "failed"]]}, "$active_seconds", None]}},
+            "total_execution_seconds": {"$sum": {"$cond": [{"$in": ["$status", ["completed", "failed"]]}, {"$ifNull": ["$execution_seconds", 0]}, 0]}},
+            "total_wait_seconds": {"$sum": {"$cond": [{"$in": ["$status", ["completed", "failed"]]}, {"$ifNull": ["$wait_seconds", 0]}, 0]}},
+        }},
+    ]).to_list(1)
+    if not result:
+        return {
+            "task_count": 0,
+            "completed_count": 0,
+            "failed_count": 0,
+            "success_rate": 0,
+            "average_queue_seconds": 0,
+            "average_execution_seconds": 0,
+            "average_wait_seconds": 0,
+            "average_active_seconds": 0,
+            "wait_ratio": 0,
+        }
+    summary = result[0]
+    summary.pop("_id", None)
+    finished_count = summary["completed_count"] + summary["failed_count"]
+    summary["success_rate"] = (
+        summary["completed_count"] / finished_count if finished_count else 0
+    )
+    total_execution = summary.pop("total_execution_seconds")
+    total_wait = summary.pop("total_wait_seconds")
+    summary["wait_ratio"] = total_wait / total_execution if total_execution else 0
+    for field, value in summary.items():
+        if value is None:
+            summary[field] = 0
+    return summary
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task(task_id: str, request: Request):
+    try:
+        object_id = ObjectId(task_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="无效的任务 ID") from exc
+    task = await request.app.state.db.task.find_one({"_id": object_id})
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return serialize_document(task)

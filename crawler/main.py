@@ -13,6 +13,15 @@ import base64
 STATUS_TTL = 90
 STATUS_HEARTBEAT_INTERVAL = 30
 
+WAIT_STAGES = {
+    "wait_initial_multiplier": "initial",
+    "wait_scroll_multiplier": "scroll",
+    "wait_post_multiplier": "post",
+    "wait_detail_open_multiplier": "detail_open",
+    "wait_detail_close_multiplier": "detail_close",
+    "wait_error_multiplier": "error_recovery",
+}
+
 ACQUIRE_STATUS_SCRIPT = """
 if redis.call('EXISTS', KEYS[1]) == 1 then
     return 0
@@ -67,6 +76,10 @@ class Crawler:
         self.cid=cid
         self.instance_id = str(uuid.uuid4())
         self.status_key = f"crawler_status:{cid}"
+        self.current_task_id = None
+        self.current_operation_index = None
+        self.task_started_monotonic = None
+        self.operation_started_monotonic = None
 
     async def acquire_status(self):
         return bool(await DB.r.eval(
@@ -198,7 +211,128 @@ class Crawler:
         random_rate = timing.get("wait_random_rate", 0.6)
         multiplier = timing.get(multiplier_key, default_multiplier)
         delay = base_seconds + base_seconds * random_rate * random.random()
-        await asyncio.sleep(delay * multiplier)
+        planned_seconds = delay * multiplier
+        started_at = time.time()
+        started_monotonic = time.monotonic()
+        await asyncio.sleep(planned_seconds)
+        actual_seconds = time.monotonic() - started_monotonic
+        if self.current_task_id is not None:
+            await DB.task_db.update_one(
+                {"_id": self.current_task_id},
+                {
+                    "$push": {
+                        "waits": {
+                            "stage": WAIT_STAGES[multiplier_key],
+                            "operation_index": self.current_operation_index,
+                            "started_at": started_at,
+                            "planned_seconds": planned_seconds,
+                            "actual_seconds": actual_seconds,
+                        }
+                    },
+                    "$inc": {"wait_count": 1, "wait_seconds": actual_seconds},
+                },
+            )
+
+    async def start_task(self, action):
+        task_id = action.get("task_id")
+        if task_id is None:
+            return
+        if isinstance(task_id, str):
+            task_id = ObjectId(task_id)
+        self.current_task_id = task_id
+        self.task_started_monotonic = time.monotonic()
+        started_at = time.time()
+        task = await DB.task_db.find_one({"_id": task_id}, {"enqueued_at": 1})
+        await DB.task_db.update_one(
+            {"_id": task_id},
+            {
+                "$set": {
+                    "status": "running",
+                    "started_at": started_at,
+                    "queue_seconds": max(0, started_at - task["enqueued_at"]),
+                }
+            },
+        )
+
+    async def finish_task(self, status, result=None, error=None):
+        if self.current_task_id is None:
+            return
+        finished_at = time.time()
+        execution_seconds = time.monotonic() - self.task_started_monotonic
+        task = await DB.task_db.find_one(
+            {"_id": self.current_task_id},
+            {"enqueued_at": 1, "wait_seconds": 1},
+        )
+        wait_seconds = task.get("wait_seconds", 0) if task else 0
+        updates = {
+            "status": status,
+            "finished_at": finished_at,
+            "execution_seconds": execution_seconds,
+            "active_seconds": max(0, execution_seconds - wait_seconds),
+            "total_seconds": max(0, finished_at - task["enqueued_at"]) if task else execution_seconds,
+            "result": result or {},
+            "error": error,
+        }
+        await DB.task_db.update_one({"_id": self.current_task_id}, {"$set": updates})
+
+    async def start_operation(self, post_index):
+        if self.current_task_id is None:
+            return
+        task = await DB.task_db.find_one(
+            {"_id": self.current_task_id},
+            {"operation_count": 1},
+        )
+        self.current_operation_index = task.get("operation_count", 0)
+        self.operation_started_monotonic = time.monotonic()
+        await DB.task_db.update_one(
+            {"_id": self.current_task_id},
+            {
+                "$inc": {"operation_count": 1},
+                "$push": {
+                    "operations": {
+                        "index": self.current_operation_index,
+                        "post_index": post_index,
+                        "post_id": None,
+                        "status": "running",
+                        "started_at": time.time(),
+                        "wait_seconds": 0,
+                        "error": None,
+                    }
+                },
+            },
+        )
+
+    async def finish_operation(self, status, post_id=None, error=None):
+        if self.current_task_id is None or self.current_operation_index is None:
+            return
+        finished_at = time.time()
+        task = await DB.task_db.find_one(
+            {"_id": self.current_task_id},
+            {"operations": 1, "waits": 1},
+        )
+        operation = task["operations"][self.current_operation_index]
+        wait_seconds = sum(
+            wait["actual_seconds"]
+            for wait in task.get("waits", [])
+            if wait.get("operation_index") == self.current_operation_index
+        )
+        elapsed_seconds = time.monotonic() - self.operation_started_monotonic
+        await DB.task_db.update_one(
+            {"_id": self.current_task_id},
+            {
+                "$set": {
+                    f"operations.{self.current_operation_index}.post_id": post_id,
+                    f"operations.{self.current_operation_index}.status": status,
+                    f"operations.{self.current_operation_index}.finished_at": finished_at,
+                    f"operations.{self.current_operation_index}.elapsed_seconds": elapsed_seconds,
+                    f"operations.{self.current_operation_index}.wait_seconds": wait_seconds,
+                    f"operations.{self.current_operation_index}.active_seconds": max(0, elapsed_seconds - wait_seconds),
+                    f"operations.{self.current_operation_index}.error": error,
+                }
+            },
+        )
+        self.current_operation_index = None
+        self.operation_started_monotonic = None
 
     async def log(self, message , detail="",screenshot_page=None):
         img_str=''
@@ -256,11 +390,20 @@ class Crawler:
 
                     await self.set_status("running")
                     await self.log(f"Processing",f"action_id[{action_id}]")
+                    await self.start_task(action)
                     try:
-                        await self.work(action, page)
+                        result = await self.work(action, page)
                     except Exception as e:
                         await self.log("Error",str(e))
-                    await self.log("Completed")
+                        await self.finish_task("failed", error=str(e))
+                    else:
+                        await self.finish_task("completed", result=result)
+                    finally:
+                        self.current_task_id = None
+                        self.current_operation_index = None
+                        self.task_started_monotonic = None
+                        self.operation_started_monotonic = None
+                    await self.log("Completed", screenshot_page=page)
                     await self.set_status("idle")
         finally:
             heartbeat_task.cancel()
@@ -303,6 +446,7 @@ class XhsCrawler(Crawler):
             i = post_index
             post_index += 1
             post = posts.nth(i)
+            await self.start_operation(i)
 
             try:
                 await post.evaluate("""
@@ -314,6 +458,7 @@ class XhsCrawler(Crawler):
                 await post.wait_for(timeout=5000, state="visible")
             except Exception as e:
                 await self.log("Warning", f"Post {i} Not Ready: {e}")
+                await self.finish_operation("failed", error=str(e))
                 continue
 
             await page.mouse.move(
@@ -326,6 +471,7 @@ class XhsCrawler(Crawler):
             try:
                 p = await self.grab_info(post)
                 if p["id"] in seen_post_ids:
+                    await self.finish_operation("skipped", post_id=p["id"])
                     continue
                 seen_post_ids.add(p["id"])
 
@@ -355,11 +501,13 @@ class XhsCrawler(Crawler):
                 await page.keyboard.press('Escape')
                 await content.wait_for(timeout=5000, state="hidden")
                 await self.wait("wait_detail_close_multiplier", 0.6)
+                await self.finish_operation("completed", post_id=p["id"])
                 
             except Exception as e:
                 await self.log('Warning',detail=f'Error: Grab {i} Failed: {e}',screenshot_page=page)
                 await page.keyboard.press('Escape')
                 await self.wait("wait_error_multiplier", 0.6)
+                await self.finish_operation("failed", error=str(e))
                 continue
         return result
 
@@ -370,11 +518,12 @@ class XhsCrawler(Crawler):
             await self.log("Checkpoint", f"Inserted {len(res)} docs")
         else:
             await self.log("Checkpoint", "No data grabbed")
+        return {"grabbed_count": len(res), "inserted_count": len(res)}
 
     async def work(self, action,page):
         if action['action']=="surface":
             await self.log("Action","Surface")
-            await self.surface(page)
+            return await self.surface(page)
         elif action['action']=="goto":
             await page.goto(action['args']['url'])
         elif action['action']=="scroll":
