@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260921-21">
+  <link rel="stylesheet" href="/static/styles.css?v=20260921-26">
 </head>
 <body>
   <header class="topbar">
@@ -100,42 +100,44 @@
   <dialog id="timingDialog">
     <form id="timingForm" method="dialog">
       <div class="dialog-heading"><div><span class="eyebrow">WAIT TIMING</span><h2>等待时间</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
-      <input type="hidden" name="crawler_id">
-      <section class="timing-preview" aria-label="等待分布预览">
-        <label>分布预览<select id="timingPreviewStage">
-          <option value="wait_initial_multiplier">首次加载</option>
-          <option value="wait_scroll_multiplier">滚动加载</option>
-          <option value="wait_post_multiplier">帖子交互</option>
-          <option value="wait_detail_open_multiplier">打开详情</option>
-          <option value="wait_detail_close_multiplier">关闭详情</option>
-          <option value="wait_error_multiplier">异常恢复</option>
-        </select></label>
-        <label>平均取样次数<input id="timingPreviewCount" type="number" min="1" max="10000" step="1" value="10" required></label>
-        <div class="timing-chart-heading"><span id="timingDistributionKind">平均值分布</span><span>相对概率密度</span></div>
-        <svg id="timingDistribution" viewBox="0 0 360 132" role="img" aria-label="等待时间分布">
-          <path class="timing-axis" d="M 24 16 V 108 H 336" />
-          <path id="timingDistributionArea" class="timing-area" />
-          <path id="timingDistributionLine" class="timing-curve" />
-          <path id="timingDistributionMean" class="timing-mean" />
-          <text x="24" y="126">0</text><text id="timingAxisMax" x="336" y="126" text-anchor="end"></text>
-        </svg>
-        <output id="timingDistributionSummary" class="timing-summary" aria-live="polite"></output>
-      </section>
-      <div class="timing-fields">
-        <label>基准时间（秒）<input name="wait_base_seconds" type="number" required min="0" max="300" step="0.1"></label>
-        <label>泛化率<input name="wait_random_rate" type="number" required min="0" max="10" step="0.1"></label>
+      <div class="timing-dialog-body">
+        <input type="hidden" name="crawler_id">
+        <section class="timing-preview" aria-label="等待分布预览">
+          <label>分布预览<select id="timingPreviewStage">
+            <option value="wait_initial_multiplier">首次加载</option>
+            <option value="wait_scroll_multiplier">滚动加载</option>
+            <option value="wait_post_multiplier">帖子交互</option>
+            <option value="wait_detail_open_multiplier">打开详情</option>
+            <option value="wait_detail_close_multiplier">关闭详情</option>
+            <option value="wait_error_multiplier">异常恢复</option>
+          </select></label>
+          <label>平均取样次数<input id="timingPreviewCount" type="number" min="1" max="10000" step="1" value="10" required></label>
+          <div class="timing-chart-heading"><span id="timingDistributionKind">平均值分布</span><span>相对概率密度</span></div>
+          <svg id="timingDistribution" viewBox="0 0 360 132" role="img" aria-label="等待时间分布">
+            <path class="timing-axis" d="M 24 16 V 108 H 336" />
+            <path id="timingDistributionArea" class="timing-area" />
+            <path id="timingDistributionLine" class="timing-curve" />
+            <path id="timingDistributionMean" class="timing-mean" />
+            <text x="24" y="126">0</text><text id="timingAxisMax" x="336" y="126" text-anchor="end"></text>
+          </svg>
+          <output id="timingDistributionSummary" class="timing-summary" aria-live="polite"></output>
+        </section>
+        <div class="timing-fields">
+          <label>基准时间（秒）<input name="wait_base_seconds" type="number" required min="0" max="300" step="0.1"></label>
+          <label>泛化率<input name="wait_random_rate" type="number" required min="0" max="10" step="0.1"></label>
+        </div>
+        <fieldset class="multiplier-fields">
+          <legend>调用点系数</legend>
+          <label>首次加载<input name="wait_initial_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+          <label>滚动加载<input name="wait_scroll_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+          <label>帖子交互<input name="wait_post_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+          <label>打开详情<input name="wait_detail_open_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+          <label>关闭详情<input name="wait_detail_close_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+          <label>异常恢复<input name="wait_error_multiplier" type="number" required min="0" max="10" step="0.1"></label>
+        </fieldset>
+        <p id="timingError" class="form-error"></p>
+        <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button type="submit" value="default" class="primary-button">立即应用</button></div>
       </div>
-      <fieldset class="multiplier-fields">
-        <legend>调用点系数</legend>
-        <label>首次加载<input name="wait_initial_multiplier" type="number" required min="0" max="10" step="0.1"></label>
-        <label>滚动加载<input name="wait_scroll_multiplier" type="number" required min="0" max="10" step="0.1"></label>
-        <label>帖子交互<input name="wait_post_multiplier" type="number" required min="0" max="10" step="0.1"></label>
-        <label>打开详情<input name="wait_detail_open_multiplier" type="number" required min="0" max="10" step="0.1"></label>
-        <label>关闭详情<input name="wait_detail_close_multiplier" type="number" required min="0" max="10" step="0.1"></label>
-        <label>异常恢复<input name="wait_error_multiplier" type="number" required min="0" max="10" step="0.1"></label>
-      </fieldset>
-      <p id="timingError" class="form-error"></p>
-      <div class="dialog-actions"><button value="cancel" class="secondary-button">取消</button><button type="submit" value="default" class="primary-button">立即应用</button></div>
     </form>
   </dialog>
 
