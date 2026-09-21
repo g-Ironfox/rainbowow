@@ -122,7 +122,9 @@ function renderCrawlers() {
             <div class="action-menu-list" role="menu" hidden>
               <button type="button" role="menuitem" data-action="goto" data-id="${escapeHtml(crawler.crawler_id)}">跳转</button>
               <button type="button" role="menuitem" data-action="surface" data-id="${escapeHtml(crawler.crawler_id)}">浏览</button>
+              <button type="button" role="menuitem" data-action="scroll" data-id="${escapeHtml(crawler.crawler_id)}">滚动</button>
               <button type="button" role="menuitem" data-action="screenshot" data-id="${escapeHtml(crawler.crawler_id)}">截屏</button>
+              <button type="button" role="menuitem" data-action="screenshot-priority" data-id="${escapeHtml(crawler.crawler_id)}">截屏(插队)</button>
             </div>
           </div>
         </div>
@@ -236,7 +238,7 @@ elements.crawlerList.addEventListener("click", async event => {
   }
   button.disabled = true;
   try {
-    const actionPath = ["surface", "screenshot"].includes(action) ? `actions/${action}` : action;
+    const actionPath = ["surface", "scroll", "screenshot", "screenshot-priority"].includes(action) ? `actions/${action}` : action;
     const result = await api(`/api/crawlers/${encodeURIComponent(id)}/${actionPath}`, { method: "POST" });
     showToast(result.message);
     await loadData(true);

@@ -268,45 +268,60 @@ class XhsCrawler(Crawler):
 
     async def grab(self,page):
         posts = page.locator("css=.feeds-container").locator("section")
-        total = await posts.count()
         result = []
-        
-        await asyncio.sleep(random.randint(3,6))
+        seen_post_ids = set()
+        post_index = 0
+        stagnant_rounds = 0
+        max_posts = self.config.get("surface_max_posts", 50)
 
-        for i in range(total):
+        await asyncio.sleep(random.uniform(4, 7))
+
+        while len(result) < max_posts and stagnant_rounds < 3:
+            total = await posts.count()
+            if post_index >= total:
+                await page.mouse.wheel(0, random.randint(900, 1400))
+                await asyncio.sleep(random.uniform(3, 6))
+                new_total = await posts.count()
+                stagnant_rounds = stagnant_rounds + 1 if new_total <= total else 0
+                continue
+
+            i = post_index
+            post_index += 1
             post = posts.nth(i)
 
-            await post.evaluate("""
-                el => el.scrollIntoView({
-                    block: 'center',
-                    behavior: 'instant'
-                })
-            """)
+            try:
+                await post.evaluate("""
+                    el => el.scrollIntoView({
+                        block: 'center',
+                        behavior: 'instant'
+                    })
+                """)
+                await post.wait_for(timeout=5000, state="visible")
+            except Exception as e:
+                await self.log("Warning", f"Post {i} Not Ready: {e}")
+                continue
 
             await page.mouse.move(
                 random.randint(200, 900),
                 random.randint(150, 600),
-                steps=random.randint(5, 20)
+                steps=random.randint(8, 24)
             )
-
-            try:
-                await post.wait_for(timeout=1000, state="visible")
-            except:
-                break
-
-            await page.screenshot(path=f"log/{self.cid}/{datetime.now().strftime('%Y/%m/%d/%H-%M-%S')}.jpg",type="jpeg",quality=50)
-            await asyncio.sleep(random.random() * 1 + 0.3)
+            await asyncio.sleep(random.uniform(1.5, 3))
 
             try:
                 p = await self.grab_info(post)
+                if p["id"] in seen_post_ids:
+                    continue
+                seen_post_ids.add(p["id"])
 
                 print(p)
 
-                await post.click()
-                await asyncio.sleep(random.random() * 1 + 1.5)
+                await post.click(timeout=5000)
+                content = page.locator("#detail-desc")
+                await content.wait_for(timeout=10000, state="visible")
+                await asyncio.sleep(random.uniform(2, 4))
                 await page.screenshot(path=f"log/{self.cid}/{datetime.now().strftime('%Y/%m/%d/%H-%M-%S')}.jpg",type="jpeg",quality=50)
                 try:
-                    content = page.locator("#detail-desc")
                     title = page.locator("#detail-title")
                     bottom = page.locator(".bottom-container")
 
@@ -323,11 +338,14 @@ class XhsCrawler(Crawler):
                 await self.log("Checkpoint",str(p['text']),screenshot_page=page)
 
                 await page.keyboard.press('Escape')
-                await asyncio.sleep(random.random() * 1 + 1)
+                await content.wait_for(timeout=5000, state="hidden")
+                await asyncio.sleep(random.uniform(2, 4))
                 
             except Exception as e:
-                self.log('Warning',detail=f'Error: Grab {i} Failed: {e}',screenshot_page=page)
-                break
+                await self.log('Warning',detail=f'Error: Grab {i} Failed: {e}',screenshot_page=page)
+                await page.keyboard.press('Escape')
+                await asyncio.sleep(random.uniform(2, 4))
+                continue
         return result
 
     async def surface(self,page):
@@ -344,6 +362,25 @@ class XhsCrawler(Crawler):
             await self.surface(page)
         elif action['action']=="goto":
             await page.goto(action['args']['url'])
+        elif action['action']=="scroll":
+            await self.log("Action","Scroll")
+            posts = page.locator("css=.feeds-container").locator("section")
+            target_index = await posts.evaluate_all("""
+                elements => {
+                    const index = elements.findIndex(
+                        element => element.getBoundingClientRect().top > window.innerHeight / 2
+                    )
+                    return index === -1 ? elements.length - 1 : index
+                }
+            """)
+            if target_index >= 0:
+                post = posts.nth(target_index)
+                await post.evaluate("""
+                    element => element.scrollIntoView({
+                        block: 'center',
+                        behavior: 'instant'
+                    })
+                """)
         elif action['action']=="screenshot":
             await self.log("Screenshot", screenshot_page=page)
         else:

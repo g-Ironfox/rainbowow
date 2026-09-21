@@ -221,7 +221,13 @@ async def terminate_crawler(crawler_id: str, request: Request):
     return {"message": "停止事件已发送"}
 
 
-async def enqueue_action(request: Request, crawler_id: str, action: str, args: dict | None = None):
+async def enqueue_action(
+    request: Request,
+    crawler_id: str,
+    action: str,
+    args: dict | None = None,
+    priority: bool = False,
+):
     await require_crawler(request, crawler_id)
     document = {
         "crawler_id": crawler_id,
@@ -231,7 +237,8 @@ async def enqueue_action(request: Request, crawler_id: str, action: str, args: d
     if args:
         document["args"] = args
     result = await request.app.state.db.action.insert_one(document)
-    await request.app.state.redis.rpush(f"Action_Queue_{crawler_id}", str(result.inserted_id))
+    push = request.app.state.redis.lpush if priority else request.app.state.redis.rpush
+    await push(f"Action_Queue_{crawler_id}", str(result.inserted_id))
     return {"message": "动作已入队", "action_id": str(result.inserted_id)}
 
 
@@ -243,6 +250,16 @@ async def surface(crawler_id: str, request: Request):
 @app.post("/api/crawlers/{crawler_id}/actions/screenshot")
 async def screenshot(crawler_id: str, request: Request):
     return await enqueue_action(request, crawler_id, "screenshot")
+
+
+@app.post("/api/crawlers/{crawler_id}/actions/screenshot-priority")
+async def screenshot_priority(crawler_id: str, request: Request):
+    return await enqueue_action(request, crawler_id, "screenshot", priority=True)
+
+
+@app.post("/api/crawlers/{crawler_id}/actions/scroll")
+async def scroll(crawler_id: str, request: Request):
+    return await enqueue_action(request, crawler_id, "scroll")
 
 
 @app.post("/api/crawlers/{crawler_id}/actions/goto")

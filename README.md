@@ -45,6 +45,16 @@ docker compose exec cli python cli.py terminate <crawler_id>
 └── docker-compose.yml
 ```
 
+## TODO
+- 小红书优化
+- 微博
+- 贴吧
+- 知乎
+- 微信公众号
+- bilibili
+- NGA
+- 小黑盒
+
 ## 注意事项
 
 - `crawler/xhs_*` 目录是浏览器用户数据, 包含 Cookie 等登录态, 已被 `.gitignore` 排除, 请勿提交。
