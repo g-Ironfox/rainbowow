@@ -247,6 +247,7 @@ elements.crawlerList.addEventListener("click", async event => {
     elements.timingForm.elements.wait_detail_close_multiplier.value = crawler.wait_detail_close_multiplier ?? 0.6;
     elements.timingForm.elements.wait_error_multiplier.value = crawler.wait_error_multiplier ?? 0.6;
     elements.timingError.textContent = "";
+    renderTimingDistribution();
     elements.timingDialog.showModal();
     return;
   }
@@ -393,6 +394,65 @@ elements.createForm.addEventListener("submit", async event => {
     elements.createError.textContent = error.message;
   }
 });
+
+function renderTimingDistribution() {
+  const stage = document.querySelector("#timingPreviewStage").value;
+  const fields = ["wait_base_seconds", "wait_random_rate", stage].map(name => elements.timingForm.elements[name]);
+  fields.push(document.querySelector("#timingPreviewCount"));
+  const valid = fields.every(field => field.value !== "" && field.validity.valid);
+  const [base, rate, multiplier, count] = fields.map(field => Number(field.value));
+  const minimum = base * multiplier;
+  const maximum = minimum * (1 + rate);
+  const mean = (minimum + maximum) / 2;
+  const deviation = base * multiplier * rate / Math.sqrt(12 * count);
+  const axisMax = Math.max(maximum * 1.2, 1);
+  const position = value => 24 + value / axisMax * 312;
+  const left = position(minimum);
+  const right = position(maximum);
+  const fixed = minimum === maximum;
+  const format = value => value.toLocaleString("zh-CN", { maximumFractionDigits: 3 });
+  let curve = "";
+  let area = "";
+  if (valid && !fixed) {
+    if (count === 1) {
+      curve = `M 24 108 H ${left} V 36 H ${right} V 108 H 336`;
+      area = `M ${left} 108 V 36 H ${right} V 108 Z`;
+    } else {
+      const density = fraction => {
+        if (count >= 12) {
+          const standardized = (fraction - 0.5) * Math.sqrt(12 * count);
+          return Math.exp(-0.5 * standardized ** 2);
+        }
+        const argument = Math.min(fraction, 1 - fraction) * count;
+        let total = 0;
+        let combination = 1;
+        for (let term = 0; term <= Math.floor(argument); term++) {
+          total += (-1) ** term * combination * (argument - term) ** (count - 1);
+          combination *= (count - term) / (term + 1);
+        }
+        return Math.max(0, total);
+      };
+      const peak = density(0.5);
+      const points = Array.from({ length: 201 }, (_, index) => {
+        const fraction = index / 200;
+        return `${position(minimum + (maximum - minimum) * fraction)} ${108 - 72 * density(fraction) / peak}`;
+      });
+      curve = `M ${points.join(" L ")}`;
+      area = `${curve} L ${right} 108 L ${left} 108 Z`;
+    }
+  }
+  document.querySelector("#timingDistributionArea").setAttribute("d", area);
+  document.querySelector("#timingDistributionLine").setAttribute("d", valid && fixed ? `M ${left} 108 V 28` : curve);
+  document.querySelector("#timingDistributionMean").setAttribute("d", valid && !fixed ? `M ${position(mean)} 28 V 108` : "");
+  document.querySelector("#timingDistributionKind").textContent = !valid ? "参数无效" : fixed ? "固定等待" : count === 1 ? "均匀分布" : count < 12 ? "平均值分布" : "均值正态近似";
+  document.querySelector("#timingAxisMax").textContent = valid ? `${format(axisMax)} 秒` : "";
+  const summary = valid ? `${count} 次平均：最短 ${format(minimum)} 秒 · 期望 ${format(mean)} 秒 · 最长 ${format(maximum)} 秒 · 标准差 ${format(deviation)} 秒` : "请输入有效的等待参数";
+  document.querySelector("#timingDistributionSummary").textContent = summary;
+  document.querySelector("#timingDistribution").setAttribute("aria-label", summary);
+}
+
+elements.timingForm.addEventListener("input", renderTimingDistribution);
+document.querySelector("#timingPreviewStage").addEventListener("change", renderTimingDistribution);
 
 elements.timingForm.addEventListener("submit", async event => {
   event.preventDefault();

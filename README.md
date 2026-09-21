@@ -45,6 +45,11 @@ docker compose exec cli python cli.py terminate <crawler_id>
 └── docker-compose.yml
 ```
 
+## 设计文档
+
+- [爬虫等待时间数学模型](docs/wait-time-model.md)
+- [Crawler 状态机制分析与 Redis 改造设计](docs/crawler-status-design.md)
+
 ## TODO
 - 小红书优化
 - 微博

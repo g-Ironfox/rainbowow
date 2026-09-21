@@ -159,18 +159,33 @@ main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 
 dialog { width: min(460px, calc(100vw - 32px)); padding: 0; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 24px 70px rgba(28,28,35,.18); }
 #crawlerDialog { scrollbar-width: none; }
 #crawlerDialog::-webkit-scrollbar { display: none; }
-#timingDialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+#timingDialog { max-height: calc(100dvh - 32px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #c7c9cf transparent; }
+#timingDialog::-webkit-scrollbar { width: 6px; }
+#timingDialog::-webkit-scrollbar-track { background: transparent; }
+#timingDialog::-webkit-scrollbar-thumb { background: #c7c9cf; border: 1px solid #fff; border-radius: 6px; }
+#timingDialog::-webkit-scrollbar-thumb:hover { background: #aeb1b9; }
+#timingDialog::-webkit-scrollbar-button { display: none; }
 dialog::backdrop { background: rgba(18, 27, 22, .6); backdrop-filter: blur(3px); }
 .image-preview-dialog { width: auto; max-width: calc(100vw - 40px); max-height: calc(100dvh - 40px); overflow: visible; border: 0; border-radius: 6px; background: transparent; box-shadow: none; }
 .image-preview-dialog img { display: block; max-width: calc(100vw - 40px); max-height: calc(100dvh - 40px); object-fit: contain; border-radius: 6px; box-shadow: 0 24px 70px rgba(0,0,0,.35); }
 .image-preview-close { position: absolute; z-index: 1; top: 8px; right: 8px; color: #fff; border-color: rgba(255,255,255,.5); background: rgba(32,33,39,.72); }
 .image-preview-close:hover { color: #fff; border-color: #fff; background: rgba(32,33,39,.9); }
 dialog form { padding: 22px; }
+#timingDialog form { padding-right: 12px; }
 .dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .dialog-heading h2 { margin: 3px 0 0; font-size: 22px; }
 .timing-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .multiplier-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; margin: 20px 0 0; padding: 0; border: 0; }
 .multiplier-fields legend { grid-column: 1 / -1; padding: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.timing-preview { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.timing-chart-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 11px; }
+#timingDistribution { display: block; width: 100%; aspect-ratio: 360 / 132; overflow: visible; }
+#timingDistribution text { fill: var(--muted); font-size: 11px; }
+.timing-axis { fill: none; stroke: var(--line); }
+.timing-area { fill: rgba(38, 145, 106, .12); }
+.timing-curve { fill: none; stroke: var(--green); stroke-width: 2; }
+.timing-mean { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.timing-summary { display: block; color: var(--muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
 .proxy-panel { margin-top: 18px; border: 1px solid var(--line); }
 .proxy-panel summary { position: relative; padding: 13px 38px 13px 14px; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; list-style: none; }
 .proxy-panel summary::-webkit-details-marker { display: none; }
