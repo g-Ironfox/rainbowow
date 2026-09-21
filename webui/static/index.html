@@ -100,12 +100,13 @@
             <option value="running">执行中</option>
             <option value="completed">已完成</option>
             <option value="failed">失败</option>
+            <option value="cancelled">已取消</option>
           </select>
         </div>
       </div>
       <div class="task-table-wrap">
         <table class="task-table">
-          <thead><tr><th>入队时间</th><th>爬虫</th><th>状态</th><th>排队</th><th>执行</th><th>停顿</th><th>非停顿</th><th>操作数</th><th>结果</th></tr></thead>
+          <thead><tr><th>入队时间</th><th>爬虫</th><th>状态</th><th>排队</th><th>执行</th><th>停顿</th><th>非停顿</th><th>操作数</th><th>结果</th><th>操作</th></tr></thead>
           <tbody id="taskList"></tbody>
         </table>
         <div id="taskEmptyState" class="empty-state" hidden><strong>暂无任务</strong><span>点击爬虫的“浏览”后，任务会显示在这里。</span></div>
@@ -199,6 +200,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260921-21" defer></script>
+  <script src="/static/app.js?v=20260921-24" defer></script>
 </body>
 </html>

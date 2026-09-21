@@ -129,13 +129,21 @@ instance_id <启动时生成的 UUID>
 updated_at  <Unix timestamp>
 ```
 
-键设置 90 秒 TTL，并由 crawler 的独立心跳任务每 30 秒刷新：
+键设置 90 秒 TTL，由 crawler 在已有的流程点上顺带续期，不额外开协程：
 
 ```text
 EXPIRE crawler_status:{crawler_id} 90
 ```
 
-选择 90 秒是为了覆盖瞬时调度延迟，同时让异常实例的状态及时消失。独立心跳不依赖 `BLPOP` 返回或动作执行完成，因此浏览器启动和长动作期间也能保持状态有效。
+续期点：
+
+| 续期点 | 频率保证 |
+| --- | --- |
+| 状态改变（`set_status`） | 每个动作前后各一次 |
+| 取消检查点（`ensure_task_active`） | 每次等待、每个帖子循环 |
+| 进入 `BLPOP` 前 | 空闲时最长 60 秒一次 |
+
+选择 90 秒是为了覆盖瞬时调度延迟，同时让异常实例的状态及时消失。空闲时 `BLPOP` 最长阻塞 60 秒，超时后回到循环顶部再次续期，因此 90 秒 TTL 不会被空闲拖到过期。
 
 `stopped` 不需要作为持久值写入 Redis。正常停止时直接删除状态键。这样 Redis 中“没有键”表示当前没有活跃实例，也避免停止状态永久残留。
 
@@ -148,7 +156,7 @@ WebUI 继续返回现有四种状态，避免修改前端协议：
 | `starting` | `running` | 实例已占有，浏览器正在启动 |
 | `running` | `running` | 正在执行动作 |
 | `idle` | `idle` | 浏览器已启动，正在等待动作 |
-| 状态键不存在 | `stopped` | 没有活跃实例，或实例心跳已过期 |
+| 状态键不存在 | `stopped` | 没有活跃实例，或实例续期已过期 |
 
 在新模型中，仅凭状态键过期无法区分“主动停止”和“进程异常退出”。建议第一阶段都映射为 `stopped`，因为 Redis 中不存在可靠信息证明退出原因。MongoDB 最后的 `Error` 日志仍可用于排障，但不再参与实时状态判断。
 
@@ -160,7 +168,7 @@ WebUI 继续返回现有四种状态，避免修改前端协议：
 stateDiagram-v2
     [*] --> starting: 原子占有状态键
     starting --> idle: 浏览器启动完成
-    idle --> idle: 独立心跳续期
+    idle --> idle: 每轮 BLPOP 前续期
     idle --> running: 收到动作
     running --> idle: 动作结束
     idle --> [*]: 收到 TERMINATE，删除键
@@ -198,7 +206,7 @@ WebUI/CLI 的 launch 接口也应先读取状态键，若存在则拒绝重复�
 4. 写入 `Starting` 日志。
 5. 浏览器启动完成后写入 `Started` 日志，并将状态设为 `idle`。
 6. 对动作队列执行最长 60 秒的 `BLPOP`。
-7. 独立心跳任务每 30 秒校验 `instance_id` 并刷新 TTL，不写日志。
+7. 进入 `BLPOP` 前、状态改变时以及每个取消检查点，都通过 Lua 校验 `instance_id` 并刷新 TTL，不写日志。
 8. 收到普通动作后将状态设为 `running`，记录 `Processing`，执行动作。
 9. 动作结束后记录 `Completed`，将状态设为 `idle`。
 10. 收到 `TERMINATE` 后记录 `Terminated`，删除状态键并退出。
@@ -264,9 +272,10 @@ sequenceDiagram
     C->>M: Starting / Started
     C->>R: Lua: 校验 instance_id，state=idle
     loop 等待动作
+        C->>R: Lua: 校验 instance_id，EXPIRE 90
         C->>R: BLPOP Action_Queue_{id}, timeout=60
         alt 等待超时
-            C->>R: Lua: 心跳续期
+            Note over C,R: 回到循环顶部再次续期
         else 收到动作
             C->>R: Lua: 校验 instance_id，state=running
             C->>M: Processing / 业务日志 / Completed
@@ -338,7 +347,7 @@ db.log.deleteMany({ message: "Waiting" })
 
 当前 `Waiting` 日志堆积是“用事件日志模拟实时状态”的直接结果。改造的核心不是隐藏 `Waiting`，而是把实时状态从 MongoDB 日志中拆出，交给带 TTL 的 Redis 状态键维护。
 
-实现采用 `crawler_status:{crawler_id}` Hash、实例 UUID、`starting/idle/running` 三种内部状态、30 秒心跳和 90 秒 TTL，可以实现：
+实现采用 `crawler_status:{crawler_id}` Hash、实例 UUID、`starting/idle/running` 三种内部状态、按流程点续期和 90 秒 TTL，可以实现：
 
 - history 不再产生重复 `Waiting`；
 - 状态查询不再依赖最后日志；

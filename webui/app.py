@@ -376,7 +376,7 @@ async def get_action(action_id: str, request: Request):
 async def list_tasks(
     request: Request,
     crawler_id: str | None = None,
-    task_status: Literal["queued", "running", "completed", "failed"] | None = Query(
+    task_status: Literal["queued", "running", "completed", "failed", "cancelled"] | None = Query(
         default=None, alias="status"
     ),
     limit: int = Query(default=50, ge=1, le=200),
@@ -469,3 +469,61 @@ async def get_task(task_id: str, request: Request):
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
     return serialize_document(task)
+
+
+@app.post("/api/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str, request: Request):
+    try:
+        object_id = ObjectId(task_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="无效的任务 ID") from exc
+
+    cancelled_at = time.time()
+    result = await request.app.state.db.task.update_one(
+        {
+            "_id": object_id,
+            "status": {"$in": ["queued", "running"]},
+        },
+        {
+            "$set": {
+                "status": "cancelled",
+                "cancelled_at": cancelled_at,
+                "finished_at": cancelled_at,
+            }
+        },
+    )
+    if result.modified_count:
+        return {"message": "任务已取消"}
+
+    task = await request.app.state.db.task.find_one(
+        {"_id": object_id},
+        {"status": 1},
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    raise HTTPException(status_code=409, detail="任务已经结束")
+
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: str, request: Request):
+    try:
+        object_id = ObjectId(task_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="无效的任务 ID") from exc
+
+    result = await request.app.state.db.task.delete_one(
+        {
+            "_id": object_id,
+            "status": {"$in": ["completed", "failed", "cancelled"]},
+        }
+    )
+    if result.deleted_count:
+        return {"message": "任务已删除"}
+
+    task = await request.app.state.db.task.find_one(
+        {"_id": object_id},
+        {"status": 1},
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    raise HTTPException(status_code=409, detail="请先结束任务再删除")

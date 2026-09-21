@@ -62,7 +62,7 @@ const elements = {
 };
 
 const statusLabels = { running: "运行中", idle: "空闲", stopped: "已停止", error: "状态异常" };
-const taskStatusLabels = { queued: "排队中", running: "执行中", completed: "已完成", failed: "失败" };
+const taskStatusLabels = { queued: "排队中", running: "执行中", completed: "已完成", failed: "失败", cancelled: "已取消" };
 const operationStatusLabels = { running: "执行中", completed: "已完成", failed: "失败", skipped: "已跳过" };
 const waitStageLabels = { initial: "首次加载", scroll: "滚动加载", post: "帖子交互", detail_open: "打开详情", detail_close: "关闭详情", error_recovery: "异常恢复" };
 
@@ -199,6 +199,9 @@ function renderTasks(tasks, summary) {
       <td>${formatDuration(task.active_seconds)}</td>
       <td>${task.operation_count || 0}</td>
       <td>${task.result?.inserted_count ?? "--"}</td>
+      <td>${["queued", "running"].includes(task.status)
+        ? `<button class="task-action-button" type="button" data-cancel-task="${escapeHtml(task._id)}">结束</button>`
+        : `<button class="task-action-button" type="button" data-delete-task="${escapeHtml(task._id)}">删除</button>`}</td>
     </tr>`).join("");
   if (markup !== state.taskMarkup) {
     elements.taskList.innerHTML = markup;
@@ -385,6 +388,34 @@ window.addEventListener("hashchange", () => setView(location.hash === "#/tasks" 
 elements.taskCrawlerFilter.addEventListener("change", () => loadTasks());
 elements.taskStatusFilter.addEventListener("change", () => loadTasks());
 elements.taskList.addEventListener("click", async event => {
+  const deleteButton = event.target.closest("button[data-delete-task]");
+  if (deleteButton) {
+    if (!window.confirm("确定删除这个任务？")) return;
+    deleteButton.disabled = true;
+    try {
+      const result = await api(`/api/tasks/${encodeURIComponent(deleteButton.dataset.deleteTask)}`, { method: "DELETE" });
+      showToast(result.message);
+      await loadTasks(true);
+    } catch (error) {
+      showToast(error.message, true);
+      deleteButton.disabled = false;
+    }
+    return;
+  }
+  const cancelButton = event.target.closest("button[data-cancel-task]");
+  if (cancelButton) {
+    if (!window.confirm("确定结束这个任务？")) return;
+    cancelButton.disabled = true;
+    try {
+      const result = await api(`/api/tasks/${encodeURIComponent(cancelButton.dataset.cancelTask)}/cancel`, { method: "POST" });
+      showToast(result.message);
+      await loadTasks(true);
+    } catch (error) {
+      showToast(error.message, true);
+      cancelButton.disabled = false;
+    }
+    return;
+  }
   const row = event.target.closest("tr[data-task-id]");
   if (!row) return;
   try {
@@ -395,6 +426,7 @@ elements.taskList.addEventListener("click", async event => {
   }
 });
 elements.taskList.addEventListener("keydown", event => {
+  if (event.target.closest("button")) return;
   if (event.key === "Enter" || event.key === " ") event.target.closest("tr[data-task-id]")?.click();
 });
 

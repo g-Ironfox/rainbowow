@@ -115,6 +115,10 @@ main { height: calc(100dvh - 64px); max-width: 1500px; margin: 0 auto; padding: 
 .task-status.running { color: var(--blue); }
 .task-status.failed { color: var(--red); }
 .task-status.queued { color: var(--yellow); }
+.task-status.cancelled { color: var(--muted); }
+.task-action-button { min-width: 48px; height: 30px; padding: 0 10px; color: var(--red); background: #fff; border: 1px solid #efc7ca; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.task-action-button:hover { background: var(--accent-soft); border-color: #e8b8bb; }
+.task-action-button:disabled { cursor: not-allowed; opacity: .5; }
 
 .primary-button, .secondary-button, .delete-button { min-height: 40px; padding: 0 17px; border: 1px solid transparent; border-radius: 7px; font-weight: 600; font-size: 13px; transition: transform .15s ease, background-color .15s ease, border-color .15s ease; }
 .primary-button { color: white; background: var(--accent); }
