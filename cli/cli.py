@@ -36,7 +36,9 @@ app = typer.Typer(
 console = Console(color_system="truecolor", force_terminal=True)
 
 @app.command("create")
-def create_crawler(crawler_id: str,user_data_dir: str , image_strategy: str = "None"):
+def create_crawler(crawler_id: str,user_data_dir: str , image_strategy: str = "none"):
+    if image_strategy not in {"none", "ban", "blank", "cache"}:
+        raise typer.BadParameter("图片策略必须是 none、ban、blank 或 cache")
     crawlers_db.insert_one({"crawler_id": crawler_id, "user_data_dir": user_data_dir,"image_strategy": image_strategy})
     log_db.insert_one({"crawler_id": crawler_id, "message": "Created", "timestamp": time.time()})
     console.print(f"[green]爬虫 '{crawler_id}'创建成功[/green]")

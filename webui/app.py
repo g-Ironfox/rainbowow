@@ -2,6 +2,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 import redis.asyncio as redis
 from bson import ObjectId
@@ -35,10 +36,10 @@ class ProxyConfig(BaseModel):
 class CrawlerCreate(BaseModel):
     crawler_id: str = Field(min_length=1, max_length=64)
     user_data_dir: str = Field(min_length=1, max_length=256)
-    image_strategy: str = Field(default="None", max_length=64)
+    image_strategy: Literal["none", "ban", "blank", "cache"] = "none"
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
 
-    @field_validator("crawler_id", "user_data_dir", "image_strategy")
+    @field_validator("crawler_id", "user_data_dir")
     @classmethod
     def strip_value(cls, value: str) -> str:
         value = value.strip()
@@ -49,10 +50,10 @@ class CrawlerCreate(BaseModel):
 
 class CrawlerUpdate(BaseModel):
     user_data_dir: str = Field(min_length=1, max_length=256)
-    image_strategy: str = Field(default="None", max_length=64)
+    image_strategy: Literal["none", "ban", "blank", "cache"] = "none"
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
 
-    @field_validator("user_data_dir", "image_strategy")
+    @field_validator("user_data_dir")
     @classmethod
     def strip_value(cls, value: str) -> str:
         value = value.strip()

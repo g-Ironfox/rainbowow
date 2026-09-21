@@ -3,6 +3,7 @@ data/
 
 # --- 隐私: 日志与截图 ---
 crawler/log/
+crawler/image_cache/
 
 # --- 隐私: 浏览器用户数据 (含 Cookie / 登录态) ---
 crawler/xhs_*/

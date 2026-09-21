@@ -83,7 +83,7 @@
       <div class="dialog-heading"><div><span id="crawlerDialogEyebrow" class="eyebrow">NEW INSTANCE</span><h2 id="crawlerDialogTitle">新建爬虫</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
       <label>爬虫 ID<input name="crawler_id" required maxlength="64" placeholder="例如 xhs_TEL7236"></label>
       <label>用户数据目录<input name="user_data_dir" required maxlength="256" placeholder="例如 xhs_TEL7236"></label>
-      <label>图片策略<select name="image_strategy"><option value="None">None</option><option value="Download">Download</option></select></label>
+      <label>图片策略<select name="image_strategy"><option value="none">正常加载</option><option value="ban">禁止加载</option><option value="blank">空白图片</option><option value="cache">本地缓存</option></select></label>
       <details class="proxy-panel">
         <summary>代理</summary>
         <div class="proxy-fields">

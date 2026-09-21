@@ -1,6 +1,8 @@
 import asyncio
 from bson import ObjectId
 from db import DB
+import hashlib
+import os
 import time
 import random
 import uuid
@@ -47,6 +49,18 @@ if redis.call('HGET', KEYS[1], 'instance_id') == ARGV[1] then
 end
 return 0
 """
+
+BLANK_IMAGE = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDAT\x08\xd7c\xfa\xff\xff\xff\x00\x03\x01\x00\x01\x04\x00\x01\x18\x0b\xe8\x91\x00\x00\x00\x00IEND\xaeB`\x82'
+
+IMAGE_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/svg+xml": ".svg",
+    "image/x-icon": ".ico",
+    "image/vnd.microsoft.icon": ".ico",
+}
 
 class Crawler:
     def __init__(self, cid):
@@ -98,6 +112,79 @@ class Crawler:
             self.instance_id,
         )
 
+    async def route_filter(self, page):
+        strategy = self.config.get("image_strategy", "none")
+        if strategy not in {"ban", "blank", "cache"}:
+            return
+
+        cache_dir = os.path.join("image_cache", self.cid)
+        if strategy == "cache":
+            await asyncio.to_thread(os.makedirs, cache_dir, exist_ok=True)
+
+        async def handle_route(route):
+            request = route.request
+            if request.resource_type != "image" or request.url.startswith("data:"):
+                await route.continue_()
+                return
+
+            if strategy == "ban":
+                await route.abort()
+                return
+
+            if strategy == "blank":
+                await route.fulfill(status=200, content_type="image/png", body=BLANK_IMAGE)
+                return
+
+            cache_key = hashlib.sha256(request.url.encode()).hexdigest()
+            cache_path = next(
+                (
+                    os.path.join(cache_dir, f"{cache_key}{extension}")
+                    for extension in set(IMAGE_EXTENSIONS.values())
+                    if os.path.exists(os.path.join(cache_dir, f"{cache_key}{extension}"))
+                ),
+                None,
+            )
+
+            if cache_path:
+                image_data = await asyncio.to_thread(self._read_file, cache_path)
+                content_type = next(
+                    mime_type
+                    for mime_type, extension in IMAGE_EXTENSIONS.items()
+                    if cache_path.endswith(extension)
+                )
+                await route.fulfill(
+                    status=200,
+                    content_type=content_type,
+                    body=image_data,
+                )
+                return
+
+            try:
+                response = await route.fetch()
+                if response.status == 200:
+                    image_data = await response.body()
+                    content_type = response.headers.get("content-type", "").split(";", 1)[0]
+                    extension = IMAGE_EXTENSIONS.get(content_type)
+                    if extension:
+                        cache_path = os.path.join(cache_dir, f"{cache_key}{extension}")
+                        await asyncio.to_thread(self._write_file, cache_path, image_data)
+                await route.fulfill(response=response)
+            except Exception as error:
+                print(f"[图片请求失败] {request.url}: {error}")
+                await route.continue_()
+
+        await page.route("**/*", handle_route)
+
+    @staticmethod
+    def _read_file(path):
+        with open(path, "rb") as file:
+            return file.read()
+
+    @staticmethod
+    def _write_file(path, data):
+        with open(path, "wb") as file:
+            file.write(data)
+
     async def log(self, message , detail="",screenshot_page=None):
         img_str=''
         if screenshot_page:
@@ -134,6 +221,7 @@ class Crawler:
 
             async with AsyncCamoufox(window=(1282, 855), headless="virtual",persistent_context=True,user_data_dir=f"./{self.user_data_dir}",proxy=proxy) as context:
                 page = await context.new_page()
+                await self.route_filter(page)
 
                 await self.log("Started")
                 await self.set_status("idle")
