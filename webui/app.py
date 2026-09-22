@@ -288,10 +288,15 @@ async def surface(crawler_id: str, request: Request):
         "enqueued_at": enqueued_at,
         "wait_count": 0,
         "wait_seconds": 0,
+        "execution_seconds": 0,
+        "active_seconds": 0,
         "operation_count": 0,
         "waits": [],
         "operations": [],
-        "result": {},
+        "result": {
+            "grabbed_count": 0,
+            "inserted_count": 0,
+        },
         "error": None,
     }
     task_result = await request.app.state.db.task.insert_one(task_document)
@@ -484,13 +489,42 @@ async def cancel_task(task_id: str, request: Request):
             "_id": object_id,
             "status": {"$in": ["queued", "running"]},
         },
-        {
-            "$set": {
-                "status": "cancelled",
-                "cancelled_at": cancelled_at,
-                "finished_at": cancelled_at,
+        [
+            {
+                "$set": {
+                    "execution_seconds": {
+                        "$cond": [
+                            {"$eq": ["$status", "running"]},
+                            {"$max": [0, {"$subtract": [cancelled_at, "$started_at"]}]},
+                            0,
+                        ]
+                    },
+                    "active_seconds": {
+                        "$cond": [
+                            {"$eq": ["$status", "running"]},
+                            {
+                                "$max": [
+                                    0,
+                                    {
+                                        "$subtract": [
+                                            {"$subtract": [cancelled_at, "$started_at"]},
+                                            {"$ifNull": ["$wait_seconds", 0]},
+                                        ]
+                                    },
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    "total_seconds": {
+                        "$max": [0, {"$subtract": [cancelled_at, "$enqueued_at"]}]
+                    },
+                    "status": "cancelled",
+                    "cancelled_at": cancelled_at,
+                    "finished_at": cancelled_at,
+                }
             }
-        },
+        ],
     )
     if result.modified_count:
         return {"message": "任务已取消"}

@@ -11,6 +11,7 @@ from datetime import datetime
 import base64
 
 STATUS_TTL = 90
+STARTING_TTL = 300
 
 WAIT_STAGES = {
     "wait_initial_multiplier": "initial",
@@ -92,7 +93,7 @@ class Crawler:
             "starting",
             self.instance_id,
             time.time(),
-            STATUS_TTL,
+            STARTING_TTL,
         ))
 
     async def set_status(self, state):
@@ -217,7 +218,10 @@ class Crawler:
         actual_seconds = time.monotonic() - started_monotonic
         if self.current_task_id is not None:
             await DB.task_db.update_one(
-                {"_id": self.current_task_id, "status": "running"},
+                {
+                    "_id": self.current_task_id,
+                    "status": {"$in": ["running", "cancelled"]},
+                },
                 {
                     "$push": {
                         "waits": {
@@ -269,7 +273,7 @@ class Crawler:
         self.current_task_id = task_id
         self.task_started_monotonic = time.monotonic()
 
-    async def finish_task(self, status, result=None, error=None):
+    async def finish_task(self, status, error=None):
         if self.current_task_id is None:
             return
         finished_at = time.time()
@@ -285,12 +289,32 @@ class Crawler:
             "execution_seconds": execution_seconds,
             "active_seconds": max(0, execution_seconds - wait_seconds),
             "total_seconds": max(0, finished_at - task["enqueued_at"]) if task else execution_seconds,
-            "result": result or {},
             "error": error,
         }
         await DB.task_db.update_one(
             {"_id": self.current_task_id, "status": "running"},
             {"$set": updates},
+        )
+
+    async def finish_cancelled_task(self):
+        if self.current_task_id is None or self.task_started_monotonic is None:
+            return
+        execution_seconds = time.monotonic() - self.task_started_monotonic
+        task = await DB.task_db.find_one(
+            {"_id": self.current_task_id, "status": "cancelled"},
+            {"wait_seconds": 1},
+        )
+        if task is None:
+            return
+        wait_seconds = task.get("wait_seconds", 0)
+        await DB.task_db.update_one(
+            {"_id": self.current_task_id, "status": "cancelled"},
+            {
+                "$set": {
+                    "execution_seconds": execution_seconds,
+                    "active_seconds": max(0, execution_seconds - wait_seconds),
+                }
+            },
         )
 
     async def start_operation(self, post_index):
@@ -300,6 +324,8 @@ class Crawler:
             {"_id": self.current_task_id},
             {"operation_count": 1},
         )
+        if task is None:
+            raise TaskCancelled()
         operation_index = task.get("operation_count", 0)
         result = await DB.task_db.update_one(
             {"_id": self.current_task_id, "status": "running"},
@@ -329,9 +355,10 @@ class Crawler:
         finished_at = time.time()
         task = await DB.task_db.find_one(
             {"_id": self.current_task_id},
-            {"operations": 1, "waits": 1},
+            {"waits": 1},
         )
-        operation = task["operations"][self.current_operation_index]
+        if task is None:
+            return
         wait_seconds = sum(
             wait["actual_seconds"]
             for wait in task.get("waits", [])
@@ -339,7 +366,10 @@ class Crawler:
         )
         elapsed_seconds = time.monotonic() - self.operation_started_monotonic
         await DB.task_db.update_one(
-            {"_id": self.current_task_id, "status": "running"},
+            {
+                "_id": self.current_task_id,
+                "status": {"$in": ["running", "cancelled"]},
+            },
             {
                 "$set": {
                     f"operations.{self.current_operation_index}.post_id": post_id,
@@ -349,7 +379,7 @@ class Crawler:
                     f"operations.{self.current_operation_index}.wait_seconds": wait_seconds,
                     f"operations.{self.current_operation_index}.active_seconds": max(0, elapsed_seconds - wait_seconds),
                     f"operations.{self.current_operation_index}.error": error,
-                }
+                },
             },
         )
         self.current_operation_index = None
@@ -414,8 +444,9 @@ class Crawler:
                     try:
                         await self.start_task(action)
                         await self.ensure_task_active()
-                        result = await self.work(action, page)
+                        await self.work(action, page)
                     except TaskCancelled:
+                        await self.finish_cancelled_task()
                         await self.log("Cancelled", f"action_id[{action_id}]")
                         await self.set_status("idle")
                         continue
@@ -423,7 +454,7 @@ class Crawler:
                         await self.log("Error",str(e))
                         await self.finish_task("failed", error=str(e))
                     else:
-                        await self.finish_task("completed", result=result)
+                        await self.finish_task("completed")
                     finally:
                         self.current_task_id = None
                         self.current_operation_index = None
@@ -547,6 +578,18 @@ class XhsCrawler(Crawler):
                     await self.log("Error",f"Grab {candidate_index} Failed: {e}",screenshot_page=page)
                 await self.ensure_task_active()
                 await DB.rawdata_db.insert_one(p)
+                await DB.task_db.update_one(
+                    {
+                        "_id": self.current_task_id,
+                        "status": {"$in": ["running", "cancelled"]},
+                    },
+                    {
+                        "$inc": {
+                            "result.grabbed_count": 1,
+                            "result.inserted_count": 1,
+                        }
+                    },
+                )
                 result.append(p)
                 await self.log("Checkpoint",str(p['text']),screenshot_page=page)
 
