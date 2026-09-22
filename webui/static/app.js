@@ -11,6 +11,7 @@ const state = {
   currentView: location.hash === "#/tasks" ? "tasks" : "fleet",
   taskMarkup: null,
   taskDetailTask: null,
+  durationDistributionOptions: {},
 };
 
 const elements = {
@@ -118,87 +119,94 @@ function formatFinalTaskDuration(task, field) {
   return formatDuration(task[field]);
 }
 
-function renderActiveDistribution(operations, options = {}) {
-  const samples = operations
-    .map(operation => Number(operation.active_seconds))
+function renderDurationDistribution(samples, config, options = {}) {
+  const values = samples
+    .map(Number)
     .filter(value => Number.isFinite(value) && value >= 0);
-  if (!samples.length) {
-    return `<section class="task-detail-section"><div class="task-detail-section-heading"><h3>非停顿分布</h3><span>暂无完整操作样本</span></div></section>`;
+  if (!values.length) {
+    return `<section class="task-detail-section duration-distribution-panel" data-distribution-chart="${config.key}"><div class="task-detail-section-heading"><h3>${config.title}</h3><span>暂无${config.sampleName}样本</span></div></section>`;
   }
 
-  const sorted = [...samples].sort((a, b) => a - b);
+  const sorted = [...values].sort((a, b) => a - b);
   const percentile = fraction => sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * fraction))];
-    const axisMinimum = 0;
-    const minimum = sorted[0];
-  const p25 = percentile(.25);
   const median = percentile(.5);
-  const p75 = percentile(.75);
-  const p90 = percentile(.9);
-  const p95 = percentile(.95);
   const maximum = sorted[sorted.length - 1];
-  const mean = samples.reduce((total, value) => total + value, 0) / samples.length;
+  const mean = values.reduce((total, value) => total + value, 0) / values.length;
   const format = value => `${value.toLocaleString("zh-CN", { maximumFractionDigits: 1 })}s`;
   const left = 34;
   const right = 356;
   const top = 14;
-  const bottom = 112;
-  const binCount = Number(options.binCount) || 20;
-  const displayPercentile = Number(options.displayPercentile) || 95;
-  const gap = options.gap === undefined ? 1 : Number(options.gap);
-  const displayMaximum = Math.max(percentile(displayPercentile / 100), 0.1);
-    const range = displayMaximum - axisMinimum;
-  const position = value => left + Math.min(1, Math.max(0, (value - axisMinimum) / range)) * (right - left);
-  const binWidth = range / binCount || 1;
+    const bottom = 166;
+    const plotHeight = 126;
+  const binDuration = Math.max(0.1, Number(options.binDurationSeconds) || 5);
+  const binCount = Math.max(1, Math.ceil(maximum / binDuration));
+  const axisMaximum = binCount * binDuration;
+  const position = value => left + Math.min(1, Math.max(0, value / axisMaximum)) * (right - left);
   const bins = Array.from({ length: binCount }, (_, index) => ({
-    start: axisMinimum + index * binWidth,
-    end: axisMinimum + (index + 1) * binWidth,
+    start: index * binDuration,
+    end: (index + 1) * binDuration,
     count: 0,
   }));
-  samples.filter(value => value <= displayMaximum).forEach(value => bins[Math.min(binCount - 1, Math.floor((value - axisMinimum) / binWidth))].count += 1);
+  values.forEach(value => bins[Math.min(binCount - 1, Math.floor(value / binDuration))].count += 1);
   const peak = Math.max(...bins.map(bin => bin.count), 1);
   const chartWidth = right - left;
   const barWidth = chartWidth / binCount;
   const bars = bins.map((bin, index) => {
-    const height = (bin.count / peak) * 78;
-    return `<rect class="active-distribution-bar" x="${(left + index * barWidth + gap / 2).toFixed(2)}" y="${(bottom - height).toFixed(2)}" width="${Math.max(1, barWidth - gap).toFixed(2)}" height="${height.toFixed(2)}" rx="1"><title>${bin.count} 个操作</title></rect>`;
+    const height = (bin.count / peak) * plotHeight;
+    return `<rect class="active-distribution-bar" x="${(left + index * barWidth).toFixed(2)}" y="${(bottom - height).toFixed(2)}" width="${barWidth.toFixed(2)}" height="${height.toFixed(2)}"><title>${format(bin.start)} - ${format(bin.end)}：${bin.count} 个${config.sampleName}</title></rect>`;
   }).join("");
-  const points = bins.map((bin, index) => `${(left + (index + 0.5) * barWidth).toFixed(2)} ${(bottom - (bin.count / peak) * 78 - 5).toFixed(2)}`).join(" L ");
-    const outlierCount = samples.filter(value => value > displayMaximum).length;
   const yTickCount = Math.min(4, peak);
   const yTicks = Array.from({ length: yTickCount + 1 }, (_, index) => {
     const value = Math.round(peak * index / yTickCount);
-    const y = bottom - 78 * index / yTickCount;
+      const y = bottom - plotHeight * index / yTickCount;
     return `<line class="active-distribution-grid" x1="${left}" y1="${y.toFixed(2)}" x2="${right}" y2="${y.toFixed(2)}"></line><text class="active-distribution-y-label" x="${left - 6}" y="${(y + 3).toFixed(2)}" text-anchor="end">${value}</text>`;
   }).join("");
-  const labelStep = Math.max(1, Math.ceil(binCount / 6));
-  const xTicks = bins.map((bin, index) => {
-    const value = (bin.start + bin.end) / 2;
-    const x = left + (index + 0.5) * barWidth;
-    const label = index % labelStep === 0 || index === bins.length - 1
-      ? `<text class="active-distribution-x-label" x="${x.toFixed(2)}" y="128" text-anchor="middle">${format(value)}</text>`
+  const minimumTickSpacing = 42;
+  const maximumTickCount = Math.max(2, Math.floor((right - left) / minimumTickSpacing));
+  const tickDuration = Math.max(1, Math.ceil(axisMaximum / maximumTickCount));
+  const tickValues = Array.from(
+    { length: Math.floor(axisMaximum) + 1 },
+    (_, index) => index,
+  );
+  const xTicks = tickValues.map(value => {
+    const x = position(value);
+    const label = value % tickDuration === 0
+      ? `<text class="active-distribution-x-label" x="${x.toFixed(2)}" y="184" text-anchor="middle">${format(value)}</text>`
       : "";
     return `<line class="active-distribution-tick" x1="${x.toFixed(2)}" y1="${bottom}" x2="${x.toFixed(2)}" y2="${bottom + 4}"></line>${label}`;
   }).join("");
   return `
-    <section class="task-detail-section"><div class="task-detail-section-heading"><h3>非停顿分布</h3><span>${samples.length} 个样本 · ${outlierCount} 个长尾</span></div>
+    <section class="task-detail-section duration-distribution-panel" data-distribution-chart="${config.key}"><div class="task-detail-section-heading"><div><h3>${config.title}</h3><span>${values.length} 个样本</span></div><label class="active-distribution-setting">每柱时长 <output data-distribution-output="binDurationSeconds">${format(binDuration)}</output><input data-distribution-option="binDurationSeconds" type="number" min="0.1" max="3600" step="0.5" value="${binDuration}"></label></div>
       <div class="active-distribution-wrap">
-        <div class="active-distribution-controls" aria-label="分布图控制">
-          <label>柱数 <output data-distribution-output="binCount">${binCount}</output><input data-distribution-option="binCount" type="range" min="8" max="40" step="1" value="${binCount}"></label>
-          <label>显示范围 <output data-distribution-output="displayPercentile">P${displayPercentile}</output><input data-distribution-option="displayPercentile" type="range" min="85" max="100" step="1" value="${displayPercentile}"></label>
-          <label>柱间距<select data-distribution-option="gap"><option value="0" ${gap === 0 ? "selected" : ""}>无</option><option value="1" ${gap === 1 ? "selected" : ""}>细</option><option value="3" ${gap === 3 ? "selected" : ""}>宽</option></select></label>
-        </div>
-        <svg class="active-distribution" viewBox="0 0 390 160" role="img" aria-label="非停顿时长分布，横轴为非停顿时长，纵轴为操作数量">
-          <text class="active-distribution-axis-title" x="8" y="14" text-anchor="middle" transform="rotate(-90 8 14)">操作数</text>
+        <svg class="active-distribution" viewBox="0 0 390 220" role="img" aria-label="${config.title}，横轴为${config.axisName}，纵轴为${config.sampleName}数量">
+          <text class="active-distribution-axis-title" x="8" y="14" text-anchor="middle" transform="rotate(-90 8 14)">${config.sampleName}数</text>
           ${yTicks}
           <line class="active-distribution-axis" x1="${left}" y1="${bottom}" x2="${right}" y2="${bottom}"></line>
           ${bars}
-          <path class="active-distribution-line" d="M ${points}"></path>
           ${xTicks}
-          <text class="active-distribution-axis-title" x="195" y="151" text-anchor="middle">非停顿时长（秒）</text>
+            <text class="active-distribution-axis-title" x="195" y="211" text-anchor="middle">${config.axisName}（秒）</text>
         </svg>
-        <div class="active-distribution-legend"><span><i class="sample"></i>采样频数</span><span>中位数 ${format(median)}</span><span>${outlierCount ? `长尾最大 ${format(maximum)}` : `均值 ${format(mean)}`}</span></div>
+        <div class="active-distribution-legend"><span><i class="sample"></i>采样频数</span><span>中位数 ${format(median)}</span><span>均值 ${format(mean)}</span><span>最大值 ${format(maximum)}</span></div>
       </div>
     </section>`;
+}
+
+function renderDurationDistributions(operations, waits) {
+  const charts = [
+    {
+      samples: operations.map(operation => operation.active_seconds),
+      config: { key: "active", title: "耗时分布", axisName: "耗时", sampleName: "操作" },
+    },
+    {
+      samples: waits.map(wait => wait.actual_seconds),
+      config: { key: "wait", title: "停顿分布", axisName: "停顿时长", sampleName: "停顿" },
+    },
+  ];
+  return `<div class="duration-distribution-grid">${charts.map(chart => renderDurationDistribution(
+    chart.samples,
+    chart.config,
+    state.durationDistributionOptions[chart.config.key],
+  )).join("")}</div>`;
 }
 
 function renderTaskTimeline(task, operations, waits) {
@@ -221,12 +229,38 @@ function renderTaskTimeline(task, operations, waits) {
     if (!start || !end || end <= start) return "";
     return `<span class="task-timeline-bar ${className}" style="left:${getPosition(start)}%;width:${getWidth(start, end)}%" title="${escapeHtml(title)}"><span>${escapeHtml(label)}</span></span>`;
   };
+  const renderNonWaitBars = (start, end) => {
+    if (!start || !end || end <= start) return "";
+    const waitIntervals = waits
+      .map(wait => [wait.started_at, wait.started_at + (wait.actual_seconds || 0)])
+      .filter(([waitStart, waitEnd]) => waitStart && waitEnd > start && waitStart < end)
+      .map(([waitStart, waitEnd]) => [Math.max(start, waitStart), Math.min(end, waitEnd)])
+      .sort((left, right) => left[0] - right[0]);
+    const activeIntervals = [];
+    let cursor = start;
+    waitIntervals.forEach(([waitStart, waitEnd]) => {
+      if (waitStart > cursor) activeIntervals.push([cursor, waitStart]);
+      cursor = Math.max(cursor, waitEnd);
+    });
+    if (cursor < end) activeIntervals.push([cursor, end]);
+    return activeIntervals
+      .filter(([activeStart, activeEnd]) => activeEnd - activeStart >= 0.02)
+      .map(([activeStart, activeEnd]) => renderBar(
+        activeStart,
+        activeEnd,
+        "non-wait",
+        "",
+        `非停顿 · ${formatDuration(activeEnd - activeStart)}`,
+      ))
+      .join("");
+  };
   const executionEnd = task.finished_at || now;
   const queueEnd = task.started_at || task.finished_at || now;
   const queueSeconds = task.queue_seconds ?? (queueEnd - task.enqueued_at);
   const executionSeconds = task.finished_at ? (task.execution_seconds ?? (executionEnd - task.started_at)) : executionEnd - task.started_at;
   const queueBar = renderBar(task.enqueued_at, queueEnd, "queue", "排队", `排队 ${formatDuration(queueSeconds)}`);
   const executionBar = task.started_at ? renderBar(task.started_at, executionEnd, "execution", "执行", `执行 ${formatDuration(executionSeconds)}`) : "";
+  const nonWaitBars = task.started_at ? renderNonWaitBars(task.started_at, executionEnd) : "";
   const operationBars = operations.map(operation => {
     const end = operation.finished_at || now;
     return renderBar(operation.started_at, end, "operation", `#${operation.index + 1}`, `浏览操作 #${operation.index + 1} · ${formatDuration(operation.elapsed_seconds ?? (end - operation.started_at))}`);
@@ -236,7 +270,7 @@ function renderTaskTimeline(task, operations, waits) {
     const operationLabel = wait.operation_index === null ? "任务级" : `#${wait.operation_index + 1}`;
     return renderBar(wait.started_at, end, "wait", "", `${waitStageLabels[wait.stage] || wait.stage} · ${operationLabel} · ${formatDuration(wait.actual_seconds)}`);
   }).join("");
-  const segmentCount = operations.length + waits.length + 2;
+  const segmentCount = operations.length + waits.length + (nonWaitBars ? 1 : 0) + 2;
   const trackMinWidth = Math.max(760, Math.min(6000, segmentCount * 18));
   const intervalCount = Math.max(4, Math.round(trackMinWidth / 180));
   const ticks = Array.from({ length: intervalCount + 1 }, (_, index) => {
@@ -249,8 +283,9 @@ function renderTaskTimeline(task, operations, waits) {
         <div class="task-timeline-axis">${ticks}</div>
         <div class="task-timeline-row"><span class="task-timeline-label">任务</span><div class="task-timeline-track">${queueBar}${executionBar}</div></div>
         <div class="task-timeline-row"><span class="task-timeline-label">浏览</span><div class="task-timeline-track">${operationBars || `<span class="task-timeline-empty">暂无操作</span>`}</div></div>
+        <div class="task-timeline-row"><span class="task-timeline-label">非停顿</span><div class="task-timeline-track">${nonWaitBars || `<span class="task-timeline-empty">暂无非停顿</span>`}</div></div>
         <div class="task-timeline-row"><span class="task-timeline-label">停顿</span><div class="task-timeline-track">${waitBars || `<span class="task-timeline-empty">暂无停顿</span>`}</div></div>
-        <div class="task-timeline-legend"><span><i class="queue"></i>排队</span><span><i class="execution"></i>执行</span><span><i class="operation"></i>浏览操作</span><span><i class="wait"></i>主动停顿</span></div>
+        <div class="task-timeline-legend"><span><i class="queue"></i>排队</span><span><i class="execution"></i>执行</span><span><i class="operation"></i>浏览操作范围</span><span><i class="non-wait"></i>非停顿</span><span><i class="wait"></i>主动停顿</span></div>
       </div>
     </section>`;
 }
@@ -387,7 +422,7 @@ function renderTaskDetail(task) {
       <div><span>非停顿</span><strong>${formatFinalTaskDuration(task, "active_seconds")}</strong></div>
     </div>
     ${renderTaskTimeline(task, operations, waits)}
-    ${renderActiveDistribution(operations, state.activeDistributionOptions)}
+    ${renderDurationDistributions(operations, waits)}
     ${task.error ? `<p class="task-error">${escapeHtml(task.error)}</p>` : ""}
     <section class="task-detail-section"><h3>浏览操作</h3>
       <div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>#</th><th>帖子</th><th>状态</th><th>总耗时</th><th>停顿</th><th>非停顿</th></tr></thead><tbody>
@@ -704,22 +739,33 @@ elements.createForm.addEventListener("submit", async event => {
 elements.taskDetailContent.addEventListener("input", event => {
   const option = event.target.closest("[data-distribution-option]");
   if (!option || !state.taskDetailTask) return;
-  state.activeDistributionOptions = {
-    ...(state.activeDistributionOptions || {}),
+  const chart = option.closest("[data-distribution-chart]");
+  if (!chart) return;
+  const chartKey = chart.dataset.distributionChart;
+  state.durationDistributionOptions[chartKey] = {
+    ...(state.durationDistributionOptions[chartKey] || {}),
     [option.dataset.distributionOption]: Number(option.value),
   };
-  const output = elements.taskDetailContent.querySelector(`[data-distribution-output="${option.dataset.distributionOption}"]`);
-  if (output) output.textContent = option.dataset.distributionOption === "displayPercentile" ? `P${option.value}` : option.value;
+  const output = chart.querySelector(`[data-distribution-output="${option.dataset.distributionOption}"]`);
+  if (output) output.textContent = `${option.value}s`;
 });
 
 elements.taskDetailContent.addEventListener("change", event => {
   const option = event.target.closest("[data-distribution-option]");
   if (!option || !state.taskDetailTask) return;
-  const currentChart = elements.taskDetailContent.querySelector(".active-distribution-wrap");
+  const currentChart = option.closest("[data-distribution-chart]");
   if (!currentChart) return;
+  const chartKey = currentChart.dataset.distributionChart;
+  const isWaitChart = chartKey === "wait";
+  const samples = isWaitChart
+    ? (state.taskDetailTask.waits || []).map(wait => wait.actual_seconds)
+    : (state.taskDetailTask.operations || []).map(operation => operation.active_seconds);
+  const config = isWaitChart
+    ? { key: "wait", title: "停顿分布", axisName: "停顿时长", sampleName: "停顿" }
+    : { key: "active", title: "耗时分布", axisName: "耗时", sampleName: "操作" };
   const temporaryContainer = document.createElement("div");
-  temporaryContainer.innerHTML = renderActiveDistribution(state.taskDetailTask.operations || [], state.activeDistributionOptions);
-  const nextChart = temporaryContainer.querySelector(".active-distribution-wrap");
+  temporaryContainer.innerHTML = renderDurationDistribution(samples, config, state.durationDistributionOptions[chartKey]);
+  const nextChart = temporaryContainer.querySelector("[data-distribution-chart]");
   if (nextChart) currentChart.replaceWith(nextChart);
 });
 

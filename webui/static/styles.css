@@ -216,6 +216,12 @@ dialog::backdrop { background: rgba(18, 27, 22, .6); backdrop-filter: blur(3px);
 .task-detail-section h3 { margin: 0 0 9px; font-size: 13px; }
 .task-detail-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .task-detail-section-heading > span { color: var(--muted); font-size: 11px; }
+.task-detail-section-heading > div > span { color: var(--muted); font-size: 11px; }
+.active-distribution-setting { display: inline-flex; align-items: center; gap: 5px; margin: 0; color: var(--muted); font-size: 10px; font-weight: 500; }
+.active-distribution-setting output { min-width: 28px; color: var(--ink); font: 600 10px "IBM Plex Mono"; }
+.active-distribution-setting input[type="number"] { width: 72px; height: 26px; padding: 0 6px; font: 10px "IBM Plex Mono"; }
+.duration-distribution-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.duration-distribution-panel { min-width: 0; }
 .task-timeline-wrap { overflow-x: auto; padding: 10px 12px 12px; border: 1px solid var(--line); background: #fcfcfd; }
 .task-timeline-axis, .task-timeline-track { position: relative; min-width: var(--timeline-min, 620px); }
 .task-timeline-axis { height: 20px; margin-left: 58px; border-bottom: 1px solid var(--line); }
@@ -229,19 +235,14 @@ dialog::backdrop { background: rgba(18, 27, 22, .6); backdrop-filter: blur(3px);
 .task-timeline-bar.queue, .task-timeline-legend i.queue { background: var(--yellow); }
 .task-timeline-bar.execution, .task-timeline-legend i.execution { background: var(--blue); }
 .task-timeline-bar.operation, .task-timeline-legend i.operation { background: var(--green); }
+.task-timeline-bar.non-wait, .task-timeline-legend i.non-wait { background: #1f8a70; }
 .task-timeline-bar.wait, .task-timeline-legend i.wait { background: var(--accent); }
 .task-timeline-empty { position: absolute; top: 2px; color: var(--muted); font-size: 11px; }
 .task-timeline-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 0 58px; color: var(--muted); font-size: 10px; }
 .task-timeline-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .task-timeline-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
 .active-distribution-wrap { padding: 10px 12px 8px; border: 1px solid var(--line); background: #fcfcfd; }
-.active-distribution-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
-.active-distribution-controls label { display: inline-flex; align-items: center; gap: 5px; margin: 0; color: var(--muted); font-size: 10px; font-weight: 500; }
-.active-distribution-controls label:has(input[type="range"]) { min-width: 150px; }
-.active-distribution-controls output { min-width: 28px; color: var(--ink); font: 600 10px "IBM Plex Mono"; }
-.active-distribution-controls input[type="range"] { width: 82px; height: 18px; accent-color: var(--blue); }
-.active-distribution-controls select { width: auto; height: 26px; padding: 0 6px; font: 10px "IBM Plex Mono"; }
-.active-distribution { display: block; width: 100%; height: 160px; }
+.active-distribution { display: block; width: 100%; height: 220px; }
 .active-distribution text { fill: var(--muted); font: 10px "IBM Plex Mono"; }
 .active-distribution-axis { stroke: var(--line-strong); }
 .active-distribution-grid { stroke: #e8e9ed; stroke-width: 1; }
