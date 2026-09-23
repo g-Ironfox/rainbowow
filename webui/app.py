@@ -225,7 +225,13 @@ async def list_cached_images(
     request: Request,
     limit: int = Query(default=60, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    sort: Literal["time", "hits"] = Query(default="time"),
 ):
+    sort_fields = (
+        {"hit_count": -1, "created_at": -1, "_id": -1}
+        if sort == "hits"
+        else {"created_at": -1, "_id": -1}
+    )
     total = await request.app.state.db.image_cache.count_documents({})
     documents = await request.app.state.db.image_cache.aggregate([
         {
@@ -237,7 +243,7 @@ async def list_cached_images(
                 "size": {"$binarySize": "$data"},
             }
         },
-        {"$sort": {"created_at": -1}},
+        {"$sort": sort_fields},
         {"$skip": offset},
         {"$limit": limit},
     ]).to_list(limit)

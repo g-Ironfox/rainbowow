@@ -108,11 +108,21 @@
     <section class="image-cache-panel">
       <div class="section-heading image-cache-heading">
         <div><span class="eyebrow">IMAGE CACHE</span><h1>图片缓存</h1></div>
-        <div class="data-heading-count"><span>缓存图片</span><strong id="imageCacheCount">0</strong></div>
+        <div class="image-cache-heading-tools">
+          <select id="imageCacheSort" aria-label="图片缓存排序">
+            <option value="time">按时间排序</option>
+            <option value="hits">按命中排序</option>
+          </select>
+          <div class="data-heading-count"><span>缓存图片</span><strong id="imageCacheCount">0</strong></div>
+        </div>
       </div>
       <div id="imageCacheGrid" class="image-cache-grid"></div>
       <div id="imageCacheEmptyState" class="empty-state" hidden><strong>暂无缓存图片</strong><span>启用“Mongo 缓存”策略后，crawler 加载过的图片会显示在这里。</span></div>
-      <div id="imageCachePagination" class="data-pagination" hidden><button id="loadMoreImages" class="secondary-button" type="button">加载更多</button></div>
+      <div id="imageCachePagination" class="data-pagination image-cache-pagination" hidden>
+        <button id="previousImagePage" class="secondary-button" type="button">上一页</button>
+        <span id="imageCachePageStatus">第 1 / 1 页</span>
+        <button id="nextImagePage" class="secondary-button" type="button">下一页</button>
+      </div>
     </section>
   </main>
 

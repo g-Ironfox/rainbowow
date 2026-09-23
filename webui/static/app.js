@@ -17,8 +17,10 @@ const state = {
   rawdataMarkup: null,
   selectedRawdataId: null,
   imageCacheItems: [],
-  imageCacheNextOffset: 0,
   imageCacheTotal: 0,
+  imageCachePage: 1,
+  imageCachePageSize: 100,
+  imageCacheSort: "time",
 };
 
 const elements = {
@@ -89,8 +91,11 @@ const elements = {
   imageCacheGrid: document.querySelector("#imageCacheGrid"),
   imageCacheEmptyState: document.querySelector("#imageCacheEmptyState"),
   imageCacheCount: document.querySelector("#imageCacheCount"),
+  imageCacheSort: document.querySelector("#imageCacheSort"),
   imageCachePagination: document.querySelector("#imageCachePagination"),
-  loadMoreImages: document.querySelector("#loadMoreImages"),
+  imageCachePageStatus: document.querySelector("#imageCachePageStatus"),
+  previousImagePage: document.querySelector("#previousImagePage"),
+  nextImagePage: document.querySelector("#nextImagePage"),
 };
 
 const statusLabels = { running: "运行中", idle: "空闲", stopped: "已停止", error: "状态异常" };
@@ -238,9 +243,13 @@ function renderImageCache() {
       .map(details => details.dataset.imageUrlId),
   );
   const scrollTop = elements.imageCacheGrid.scrollTop;
+  const pageCount = Math.max(1, Math.ceil(state.imageCacheTotal / state.imageCachePageSize));
   elements.imageCacheCount.textContent = state.imageCacheTotal.toLocaleString("zh-CN");
   elements.imageCacheEmptyState.hidden = state.imageCacheItems.length > 0;
-  elements.imageCachePagination.hidden = state.imageCacheItems.length === 0 || state.imageCacheNextOffset >= state.imageCacheTotal;
+  elements.imageCachePagination.hidden = state.imageCacheTotal <= state.imageCachePageSize;
+  elements.imageCachePageStatus.textContent = `第 ${state.imageCachePage} / ${pageCount} 页`;
+  elements.previousImagePage.disabled = state.imageCachePage <= 1;
+  elements.nextImagePage.disabled = state.imageCachePage >= pageCount;
   elements.imageCacheGrid.innerHTML = state.imageCacheItems.map(item => `
     <article class="image-cache-card">
       <a href="${escapeHtml(item.image_url)}" target="_blank" rel="noopener noreferrer" class="image-cache-preview">
@@ -256,25 +265,20 @@ function renderImageCache() {
   elements.imageCacheGrid.scrollTop = scrollTop;
 }
 
-async function loadImageCache({ append = false, refresh = false, silent = false } = {}) {
+async function loadImageCache({ page = state.imageCachePage, preserveScroll = false, silent = false } = {}) {
   try {
-    const offset = append ? state.imageCacheNextOffset : 0;
-    const result = await api(`/api/image-cache?limit=100&offset=${offset}`);
-    if (append) {
-      const existingIds = new Set(state.imageCacheItems.map(item => item._id));
-      state.imageCacheItems = [...state.imageCacheItems, ...result.items.filter(item => !existingIds.has(item._id))];
-    } else if (refresh && state.imageCacheItems.length) {
-      const latestIds = new Set(result.items.map(item => item._id));
-      state.imageCacheItems = [
-        ...result.items,
-        ...state.imageCacheItems.filter(item => !latestIds.has(item._id)),
-      ];
-    } else {
-      state.imageCacheItems = result.items;
-    }
-    state.imageCacheNextOffset = state.imageCacheItems.length;
+    const offset = (page - 1) * state.imageCachePageSize;
+    const params = new URLSearchParams({
+      limit: String(state.imageCachePageSize),
+      offset: String(offset),
+      sort: state.imageCacheSort,
+    });
+    const result = await api(`/api/image-cache?${params}`);
+    state.imageCacheItems = result.items;
     state.imageCacheTotal = result.total;
+    state.imageCachePage = page;
     renderImageCache();
+    if (!preserveScroll) elements.imageCacheGrid.scrollTop = 0;
   } catch (error) {
     if (!silent) showToast(error.message, true);
     throw error;
@@ -847,7 +851,7 @@ async function loadData(silent = false) {
     elements.refreshState.classList.remove("error");
     if (state.currentView === "tasks") await loadTasks(true);
     if (state.currentView === "data") await loadRawdata({ refresh: true, silent: true });
-    if (state.currentView === "images") await loadImageCache({ refresh: true, silent: true });
+    if (state.currentView === "images") await loadImageCache({ preserveScroll: true, silent: true });
     if (state.currentView === "analysis") await loadCrawlerAnalysis(true);
   } catch (error) {
     elements.refreshState.textContent = "连接中断";
@@ -944,13 +948,16 @@ elements.loadMoreData.addEventListener("click", async () => {
     elements.loadMoreData.disabled = false;
   }
 });
-elements.loadMoreImages.addEventListener("click", async () => {
-  elements.loadMoreImages.disabled = true;
-  try {
-    await loadImageCache({ append: true });
-  } finally {
-    elements.loadMoreImages.disabled = false;
-  }
+elements.imageCacheSort.addEventListener("change", () => {
+  state.imageCacheSort = elements.imageCacheSort.value;
+  loadImageCache({ page: 1 });
+});
+elements.previousImagePage.addEventListener("click", () => {
+  if (state.imageCachePage > 1) loadImageCache({ page: state.imageCachePage - 1 });
+});
+elements.nextImagePage.addEventListener("click", () => {
+  const pageCount = Math.ceil(state.imageCacheTotal / state.imageCachePageSize);
+  if (state.imageCachePage < pageCount) loadImageCache({ page: state.imageCachePage + 1 });
 });
 elements.rawdataList.addEventListener("click", event => {
   const row = event.target.closest("tr[data-rawdata-id]");
