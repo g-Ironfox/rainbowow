@@ -7,7 +7,7 @@ from typing import Literal
 import redis.asyncio as redis
 from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -188,6 +188,38 @@ async def list_rawdata(
         "items": [serialize_document(document) for document in documents],
         "next_before": str(documents[-1]["_id"]) if has_more and documents else None,
     }
+
+
+@app.get("/api/images/{image_key}")
+async def get_cached_image(image_key: str, request: Request):
+    try:
+        image_id = ObjectId(image_key)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="无效的图片 ID") from exc
+    cached_image = await request.app.state.db.image_cache.find_one(
+        {"_id": image_id},
+        {"data": 1, "content_type": 1},
+    )
+    if cached_image is None:
+        raise HTTPException(status_code=404, detail="图片不存在")
+    return Response(
+        content=cached_image["data"],
+        media_type=cached_image["content_type"],
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@app.delete("/api/rawdata/{data_id}")
+async def delete_rawdata(data_id: str, request: Request):
+    try:
+        object_id = ObjectId(data_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="无效的数据 ID") from exc
+
+    result = await request.app.state.db.rawdata.delete_one({"_id": object_id})
+    if not result.deleted_count:
+        raise HTTPException(status_code=404, detail="数据不存在")
+    return {"message": "数据已删除"}
 
 
 @app.get("/api/crawlers")

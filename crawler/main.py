@@ -1,8 +1,6 @@
 import asyncio
 from bson import ObjectId
 from db import DB
-import hashlib
-import os
 import time
 import random
 import uuid
@@ -61,14 +59,15 @@ return 0
 
 BLANK_IMAGE = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDAT\x08\xd7c\xfa\xff\xff\xff\x00\x03\x01\x00\x01\x04\x00\x01\x18\x0b\xe8\x91\x00\x00\x00\x00IEND\xaeB`\x82'
 
-IMAGE_EXTENSIONS = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/webp": ".webp",
-    "image/gif": ".gif",
-    "image/svg+xml": ".svg",
-    "image/x-icon": ".ico",
-    "image/vnd.microsoft.icon": ".ico",
+IMAGE_CONTENT_TYPES = {
+    "image/avif",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/svg+xml",
+    "image/vnd.microsoft.icon",
+    "image/webp",
+    "image/x-icon",
 }
 
 class TaskCancelled(Exception):
@@ -130,10 +129,6 @@ class Crawler:
         if strategy not in {"ban", "blank", "cache"}:
             return
 
-        cache_dir = os.path.join("image_cache", self.cid)
-        if strategy == "cache":
-            await asyncio.to_thread(os.makedirs, cache_dir, exist_ok=True)
-
         async def handle_route(route):
             request = route.request
             if request.resource_type != "image" or request.url.startswith("data:"):
@@ -148,27 +143,12 @@ class Crawler:
                 await route.fulfill(status=200, content_type="image/png", body=BLANK_IMAGE)
                 return
 
-            cache_key = hashlib.sha256(request.url.encode()).hexdigest()
-            cache_path = next(
-                (
-                    os.path.join(cache_dir, f"{cache_key}{extension}")
-                    for extension in set(IMAGE_EXTENSIONS.values())
-                    if os.path.exists(os.path.join(cache_dir, f"{cache_key}{extension}"))
-                ),
-                None,
-            )
-
-            if cache_path:
-                image_data = await asyncio.to_thread(self._read_file, cache_path)
-                content_type = next(
-                    mime_type
-                    for mime_type, extension in IMAGE_EXTENSIONS.items()
-                    if cache_path.endswith(extension)
-                )
+            cached_image = await DB.image_cache_db.find_one({"url": request.url})
+            if cached_image:
                 await route.fulfill(
                     status=200,
-                    content_type=content_type,
-                    body=image_data,
+                    content_type=cached_image["content_type"],
+                    body=cached_image["data"],
                 )
                 return
 
@@ -177,10 +157,12 @@ class Crawler:
                 if response.status == 200:
                     image_data = await response.body()
                     content_type = response.headers.get("content-type", "").split(";", 1)[0]
-                    extension = IMAGE_EXTENSIONS.get(content_type)
-                    if extension:
-                        cache_path = os.path.join(cache_dir, f"{cache_key}{extension}")
-                        await asyncio.to_thread(self._write_file, cache_path, image_data)
+                    if content_type in IMAGE_CONTENT_TYPES:
+                        await self.store_cached_image(
+                            request.url,
+                            content_type,
+                            image_data,
+                        )
                 await route.fulfill(response=response)
             except Exception as error:
                 print(f"[图片请求失败] {request.url}: {error}")
@@ -188,15 +170,40 @@ class Crawler:
 
         await page.route("**/*", handle_route)
 
-    @staticmethod
-    def _read_file(path):
-        with open(path, "rb") as file:
-            return file.read()
+    async def store_cached_image(self, url, content_type, image_data):
+        await DB.image_cache_db.update_one(
+            {"url": url},
+            {
+                "$setOnInsert": {
+                    "content_type": content_type,
+                    "data": image_data,
+                    "created_at": time.time(),
+                }
+            },
+            upsert=True,
+        )
+        cached_image = await DB.image_cache_db.find_one({"url": url}, {"_id": 1})
+        return str(cached_image["_id"])
 
-    @staticmethod
-    def _write_file(path, data):
-        with open(path, "wb") as file:
-            file.write(data)
+    async def cache_image(self, page, url):
+        if not url or url.startswith("data:"):
+            return None
+        cached_image = await DB.image_cache_db.find_one({"url": url}, {"_id": 1})
+        if cached_image:
+            return str(cached_image["_id"])
+
+        response = await page.context.request.get(
+            url,
+            headers={"Referer": page.url},
+            timeout=15000,
+        )
+        if not response.ok:
+            raise RuntimeError(f"图片下载失败: HTTP {response.status}")
+        content_type = response.headers.get("content-type", "").split(";", 1)[0]
+        if content_type not in IMAGE_CONTENT_TYPES:
+            raise RuntimeError(f"图片类型不支持: {content_type or 'unknown'}")
+        image_data = await response.body()
+        return await self.store_cached_image(url, content_type, image_data)
 
     async def wait(self, multiplier_key, default_multiplier):
         timing = await DB.crawler_db.find_one(
@@ -470,15 +477,21 @@ class Crawler:
         return         
 
 class XhsCrawler(Crawler):
-    async def grab_info(self, post):
+    async def grab_info(self, post, page):
         href = await post.locator('a[href*="/explore/"]').first.get_attribute("href")
         postid = href.split("/explore/", 1)[1].split("?", 1)[0].rstrip("/")
 
-        img = await post.locator("a").nth(1).locator("img").get_attribute("src")
+        img_url = await post.locator("a").nth(1).locator("img").get_attribute("src")
+        image_key = await self.cache_image(page, img_url)
         text = await post.locator(".title").inner_text()
         like = await post.locator(".count").inner_text()
 
-        return {"text": text, "id": postid, "like": like, "img": img}
+        return {
+            "text": text,
+            "id": postid,
+            "like": like,
+            "img": f"/api/images/{image_key}" if image_key else None,
+        }
 
     async def grab(self,page):
         posts = page.locator("css=.feeds-container").locator("section")
@@ -487,7 +500,7 @@ class XhsCrawler(Crawler):
         failed_post_ids = set()
         stagnant_rounds = 0
         consecutive_warnings = 0
-        max_posts = self.config.get("surface_max_posts", 50)
+        max_posts = self.config.get("surface_max_posts", 20)
 
         await self.wait("wait_initial_multiplier", 1.0)
 
@@ -551,7 +564,7 @@ class XhsCrawler(Crawler):
             await self.wait("wait_post_multiplier", 0.4)
 
             try:
-                p = await self.grab_info(post)
+                p = await self.grab_info(post, page)
                 if p["id"] in seen_post_ids:
                     await self.finish_operation("skipped", post_id=p["id"])
                     continue

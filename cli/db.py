@@ -2,8 +2,6 @@ import redis.asyncio as redis
 import os
 import motor.motor_asyncio
 
-DBNAME="rainbow"
-
 class DBClient:
     
     async def init(self):
@@ -11,6 +9,7 @@ class DBClient:
         port = os.getenv("MONGO_PORT", "27017")
         user = os.getenv("MONGO_USER", "root")
         password = os.getenv("MONGO_PASS", "114515")
+        db_name = os.getenv("MONGO_DB", "rainbow1")
 
         uri = f"mongodb://{user}:{password}@{host}:{port}/admin"
 
@@ -23,16 +22,16 @@ class DBClient:
             print("[-]Error:Database Unavaliabe")
             exit()
 
-
-        self.crawler_db=self.m[DBNAME]["crawler"]
-        self.task_db=self.m[DBNAME]["task"]
-        self.action_db=self.m[DBNAME]["action"]
-        self.rawdata_db=self.m[DBNAME]["rawdata"]
-        self.log_db=self.m[DBNAME]["log"]
+        db = self.m[db_name]
+        self.crawler_db=db["crawlers"]
+        self.task_db=db["task"]
+        self.action_db=db["action"]
+        self.rawdata_db=db["rawdata"]
+        self.log_db=db["log"]
 
         pool = redis.ConnectionPool(
-            host='redis',
-            port=6379,
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
             db=0,
             decode_responses=True,
             max_connections=1024  # 连接池最大连接数,因为crwaler要阻塞一个,所以一个crawler要吃掉一个,必须高于crawler数量

@@ -64,5 +64,5 @@ docker compose exec cli python cli.py terminate <crawler_id>
 ## 注意事项
 
 - `crawler/xhs_*` 目录是浏览器用户数据, 包含 Cookie 等登录态, 已被 `.gitignore` 排除, 请勿提交。
-- MongoDB 密码通过 `.env` 中的 `MONGO_PASS` 配置, 默认 `changeme`。
+- 所有环境变量 (MongoDB / Redis 连接、密码、时区等) 集中在根目录 `.env`, 由 `docker-compose.yml` 以 `${VAR}` 引用; 缺少 `.env` 会导致变量为空, 请先 `cp .env.example .env`。
 - 构建 crawler 镜像时如需 GitHub Token (下载浏览器限流), 请通过 `--build-arg GITHUB_TOKEN=xxx` 传入, 不要写死在 Dockerfile 中。

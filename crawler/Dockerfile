@@ -1,20 +1,9 @@
-FROM python:3.11-slim-bookworm
-
-# 1. 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    xvfb \
-    fonts-noto-cjk \
-    libgtk-3-0 \
-    libgbm1 \
-    libnss3 \
-    libxss1 \
-    libasound2 \
-    libdbus-1-3 \
-    && rm -rf /var/lib/apt/lists/*
+# 基础镜像 (Python + Xvfb/图形库) 见 Dockerfile.base, 构建一次即可复用。
+FROM rainbowow/crawler-base:py311
 
 WORKDIR /app
 
-
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN pip install -U camoufox[geoip]
@@ -29,4 +18,3 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "main.py"]

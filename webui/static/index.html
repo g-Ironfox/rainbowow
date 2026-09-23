@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260923-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260923-2">
 </head>
 <body>
   <header class="topbar">
@@ -139,7 +139,7 @@
       <div class="dialog-heading"><div><span id="crawlerDialogEyebrow" class="eyebrow">NEW INSTANCE</span><h2 id="crawlerDialogTitle">新建爬虫</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
       <label>爬虫 ID<input name="crawler_id" required maxlength="64" placeholder="例如 xhs_TEL7236"></label>
       <label>用户数据目录<input name="user_data_dir" required maxlength="256" placeholder="例如 xhs_TEL7236"></label>
-      <label>图片策略<select name="image_strategy"><option value="none">正常加载</option><option value="ban">禁止加载</option><option value="blank">空白图片</option><option value="cache">本地缓存</option></select></label>
+      <label>图片策略<select name="image_strategy"><option value="none">正常加载</option><option value="ban">禁止加载</option><option value="blank">空白图片</option><option value="cache">Mongo 缓存</option></select></label>
       <details class="proxy-panel">
         <summary>代理</summary>
         <div class="proxy-fields">
@@ -223,10 +223,11 @@
     <div class="data-detail-shell">
       <div class="dialog-heading"><div><span class="eyebrow">DATA DETAIL</span><h2 id="dataDetailTitle">数据详情</h2></div><button class="close-button" type="button" aria-label="关闭">×</button></div>
       <div id="dataDetailContent"></div>
+      <div class="data-detail-actions"><button id="deleteRawdata" class="delete-button" type="button">删除记录</button></div>
     </div>
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260923-1" defer></script>
+  <script src="/static/app.js?v=20260923-4" defer></script>
 </body>
 </html>

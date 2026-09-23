@@ -15,6 +15,7 @@ const state = {
   rawdataItems: [],
   rawdataNextBefore: null,
   rawdataMarkup: null,
+  selectedRawdataId: null,
 };
 
 const elements = {
@@ -61,6 +62,7 @@ const elements = {
   dataDetailDialog: document.querySelector("#dataDetailDialog"),
   dataDetailTitle: document.querySelector("#dataDetailTitle"),
   dataDetailContent: document.querySelector("#dataDetailContent"),
+  deleteRawdata: document.querySelector("#deleteRawdata"),
   taskList: document.querySelector("#taskList"),
   taskEmptyState: document.querySelector("#taskEmptyState"),
   taskCrawlerFilter: document.querySelector("#taskCrawlerFilter"),
@@ -134,16 +136,24 @@ function getRawdataTimestamp(item) {
   return null;
 }
 
+function getRawdataImageUrl(item) {
+  if (typeof item.img !== "string") return null;
+  return item.img.startsWith("/api/images/") || item.img.startsWith("data:")
+    ? item.img
+    : null;
+}
+
 function renderRawdata() {
   elements.dataEmptyState.hidden = state.rawdataItems.length > 0;
   elements.dataPagination.hidden = !state.rawdataNextBefore;
   const markup = state.rawdataItems.map(item => {
     const title = getRawdataTitle(item);
     const content = getRawdataContent(item);
+    const imageUrl = getRawdataImageUrl(item);
     const interaction = [item.like && `赞 ${item.like}`, item.comments_count].filter(Boolean).join(" · ") || "--";
     return `
       <tr tabindex="0" data-rawdata-id="${escapeHtml(item._id)}">
-        <td>${item.img ? `<img class="data-thumbnail" src="${escapeHtml(item.img)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="data-thumbnail-placeholder">无图</span>`}</td>
+        <td>${imageUrl ? `<img class="data-thumbnail" src="${escapeHtml(imageUrl)}" alt="" loading="lazy">` : `<span class="data-thumbnail-placeholder">无图</span>`}</td>
         <td><strong class="data-title" title="${escapeHtml(title)}">${escapeHtml(title)}</strong><span class="data-content" title="${escapeHtml(content)}">${escapeHtml(content)}</span></td>
         <td><span class="data-source">${escapeHtml(item.source || "未知")}</span></td>
         <td class="data-interaction">${escapeHtml(interaction)}</td>
@@ -156,16 +166,24 @@ function renderRawdata() {
   }
 }
 
-async function loadRawdata({ append = false, silent = false } = {}) {
+async function loadRawdata({ append = false, refresh = false, silent = false } = {}) {
   try {
-    const currentLimit = append ? 30 : Math.max(30, Math.min(100, state.rawdataItems.length));
-    const params = new URLSearchParams({ limit: String(currentLimit) });
+    const params = new URLSearchParams({ limit: "100" });
     if (append && state.rawdataNextBefore) params.set("before", state.rawdataNextBefore);
     const result = await api(`/api/rawdata?${params}`);
-    state.rawdataItems = append
-      ? [...state.rawdataItems, ...result.items].slice(0, 100)
-      : result.items;
-    state.rawdataNextBefore = state.rawdataItems.length < 100 ? result.next_before : null;
+    if (append) {
+      state.rawdataItems = [...state.rawdataItems, ...result.items];
+      state.rawdataNextBefore = result.next_before;
+    } else if (refresh && state.rawdataItems.length) {
+      const latestIds = new Set(result.items.map(item => item._id));
+      state.rawdataItems = [
+        ...result.items,
+        ...state.rawdataItems.filter(item => !latestIds.has(item._id)),
+      ];
+    } else {
+      state.rawdataItems = result.items;
+      state.rawdataNextBefore = result.next_before;
+    }
     renderRawdata();
   } catch (error) {
     if (!silent) showToast(error.message, true);
@@ -175,13 +193,15 @@ async function loadRawdata({ append = false, silent = false } = {}) {
 
 function openRawdataDetail(item) {
   const title = getRawdataTitle(item);
+  const imageUrl = getRawdataImageUrl(item);
   const postUrl = item.source === "xhs" && item.id
     ? `https://www.xiaohongshu.com/explore/${encodeURIComponent(item.id)}`
     : null;
+  state.selectedRawdataId = item._id;
   elements.dataDetailTitle.textContent = title;
   elements.dataDetailContent.innerHTML = `
     <div class="data-detail-summary">
-      ${item.img ? `<img src="${escapeHtml(item.img)}" alt="${escapeHtml(title)}" referrerpolicy="no-referrer">` : ""}
+      ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(title)}">` : ""}
       <div><p>${escapeHtml(getRawdataContent(item))}</p>${postUrl ? `<a href="${postUrl}" target="_blank" rel="noopener noreferrer">打开原帖</a>` : ""}</div>
     </div>
     <section class="data-json-section"><h3>完整记录</h3><pre>${escapeHtml(JSON.stringify(item, null, 2))}</pre></section>`;
@@ -525,6 +545,35 @@ function renderTaskDetail(task) {
   state.taskDetailTask = task;
   const operations = task.operations || [];
   const waits = task.waits || [];
+  const timeDetails = [];
+  const operationWaitIndexes = new Set();
+  operations.forEach(operation => {
+    const operationWaits = waits
+      .filter(wait => wait.operation_index === operation.index)
+      .sort((left, right) => left.started_at - right.started_at);
+    let activeStartedAt = operation.started_at;
+    operationWaits.forEach(wait => {
+      operationWaitIndexes.add(wait);
+      timeDetails.push({
+        ...wait,
+        active_seconds: Math.max(0, wait.started_at - activeStartedAt),
+      });
+      activeStartedAt = wait.started_at + (wait.actual_seconds || 0);
+    });
+    const operationFinishedAt = operation.finished_at || Date.now() / 1000;
+    if (operationFinishedAt > activeStartedAt) {
+      timeDetails.push({
+        stage: "operation_tail",
+        operation_index: operation.index,
+        started_at: activeStartedAt,
+        active_seconds: operationFinishedAt - activeStartedAt,
+      });
+    }
+  });
+  waits
+    .filter(wait => !operationWaitIndexes.has(wait))
+    .forEach(wait => timeDetails.push({ ...wait, active_seconds: null }));
+  timeDetails.sort((left, right) => (left.started_at ?? Number.MAX_VALUE) - (right.started_at ?? Number.MAX_VALUE));
   elements.taskDetailTitle.textContent = `${task.crawler_id} · ${taskStatusLabels[task.status] || task.status}`;
   elements.taskDetailContent.innerHTML = `
     <div class="task-detail-metrics">
@@ -542,9 +591,9 @@ function renderTaskDetail(task) {
         ${operations.length ? operations.map(operation => `<tr><td>${operation.index + 1}</td><td title="${escapeHtml(operation.post_id || "")}">${escapeHtml(operation.post_id || `页面项 ${operation.post_index}`)}</td><td>${operationStatusLabels[operation.status] || escapeHtml(operation.status)}</td><td>${formatDuration(operation.elapsed_seconds)}</td><td>${formatDuration(operation.wait_seconds)}</td><td>${formatDuration(operation.active_seconds)}</td></tr>`).join("") : `<tr><td colspan="6">暂无浏览操作</td></tr>`}
       </tbody></table></div>
     </section>
-    <section class="task-detail-section"><h3>停顿明细</h3>
-      <div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>阶段</th><th>浏览操作</th><th>计划</th><th>实际</th></tr></thead><tbody>
-        ${waits.length ? waits.map(wait => `<tr><td>${waitStageLabels[wait.stage] || escapeHtml(wait.stage)}</td><td>${wait.operation_index === null ? "任务级" : `#${wait.operation_index + 1}`}</td><td>${formatDuration(wait.planned_seconds)}</td><td>${formatDuration(wait.actual_seconds)}</td></tr>`).join("") : `<tr><td colspan="4">暂无停顿</td></tr>`}
+    <section class="task-detail-section"><h3>时间明细</h3>
+      <div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>阶段</th><th>浏览操作</th><th>计划停顿</th><th>实际停顿</th><th>非停顿</th></tr></thead><tbody>
+        ${timeDetails.length ? timeDetails.map(detail => `<tr><td>${detail.stage === "operation_tail" ? "操作收尾" : waitStageLabels[detail.stage] || escapeHtml(detail.stage)}</td><td>${detail.operation_index === null ? "任务级" : `#${detail.operation_index + 1}`}</td><td>${detail.planned_seconds === undefined ? "--" : formatDuration(detail.planned_seconds)}</td><td>${detail.actual_seconds === undefined ? "--" : formatDuration(detail.actual_seconds)}</td><td>${detail.active_seconds === null ? "--" : formatDuration(detail.active_seconds)}</td></tr>`).join("") : `<tr><td colspan="5">暂无时间明细</td></tr>`}
       </tbody></table></div>
     </section>`;
 }
@@ -595,7 +644,7 @@ async function loadData(silent = false) {
     elements.refreshState.textContent = state.paused ? "自动刷新已暂停" : "自动刷新已开启";
     elements.refreshState.classList.remove("error");
     if (state.currentView === "tasks") await loadTasks(true);
-    if (state.currentView === "data") await loadRawdata({ silent: true });
+    if (state.currentView === "data") await loadRawdata({ refresh: true, silent: true });
   } catch (error) {
     elements.refreshState.textContent = "连接中断";
     elements.refreshState.classList.add("error");
@@ -701,6 +750,27 @@ elements.rawdataList.addEventListener("keydown", event => {
   if ((event.key === "Enter" || event.key === " ") && event.target.matches("tr[data-rawdata-id]")) {
     event.preventDefault();
     event.target.click();
+  }
+});
+elements.deleteRawdata.addEventListener("click", async () => {
+  const dataId = state.selectedRawdataId;
+  if (!dataId || !window.confirm("确定删除这条爬取数据？此操作无法撤销。")) return;
+  elements.deleteRawdata.disabled = true;
+  try {
+    const result = await api(`/api/rawdata/${encodeURIComponent(dataId)}`, { method: "DELETE" });
+    state.rawdataItems = state.rawdataItems.filter(item => item._id !== dataId);
+    state.rawdataMarkup = null;
+    state.selectedRawdataId = null;
+    elements.dataDetailDialog.close();
+    renderRawdata();
+    const nextCount = Math.max(0, Number(elements.dataTotalCount.textContent.replaceAll(",", "")) - 1);
+    elements.dataTotalCount.textContent = nextCount.toLocaleString("zh-CN");
+    elements.rawdataCount.textContent = nextCount.toLocaleString("zh-CN");
+    showToast(result.message);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    elements.deleteRawdata.disabled = false;
   }
 });
 elements.taskCrawlerFilter.addEventListener("change", () => loadTasks());
