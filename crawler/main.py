@@ -428,6 +428,7 @@ class Crawler:
                     await self.refresh_status_once()
                     cm = await DB.r.blpop(f"Action_Queue_{self.cid}", timeout=60) # 阻塞等待Action
                     if not cm:
+                        await self.refresh_status_once()
                         continue
                     _,action_id = cm
                     if action_id=="TERMINATE":

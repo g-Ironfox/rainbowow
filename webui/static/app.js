@@ -209,6 +209,65 @@ function renderDurationDistributions(operations, waits) {
   )).join("")}</div>`;
 }
 
+function renderNonWaitDistribution(operations) {
+  const values = operations
+    .map(operation => Number(operation.active_seconds))
+    .filter(value => Number.isFinite(value) && value >= 0);
+  if (!values.length) {
+    return `<section class="task-detail-section non-wait-distribution"><div class="task-detail-section-heading"><h3>非停顿时间分布</h3><span>暂无非停顿样本</span></div></section>`;
+  }
+
+  const left = 8;
+  const chartWidth = Math.max(348, left + 24 + Math.max(0, values.length - 1) * 32);
+  const right = chartWidth - 24;
+  const top = 14;
+  const bottom = 166;
+  const maximum = Math.max(...values, 1);
+  const roughTickStep = maximum / 5;
+  const tickMagnitude = 10 ** Math.floor(Math.log10(roughTickStep));
+  const normalizedTickStep = roughTickStep / tickMagnitude;
+  const tickFactor = normalizedTickStep <= 1 ? 1 : normalizedTickStep <= 2 ? 2 : normalizedTickStep <= 5 ? 5 : 10;
+  const tickStep = Math.max(1, tickFactor * tickMagnitude);
+  const axisMaximum = Math.max(4, Math.ceil(maximum / tickStep) * tickStep);
+  const positionX = index => left + (values.length === 1 ? (right - left) / 2 : index / (values.length - 1) * (right - left));
+  const positionY = value => bottom - value / axisMaximum * (bottom - top);
+  const points = values.map((value, index) => `${positionX(index).toFixed(2)},${positionY(value).toFixed(2)}`).join(" ");
+  const pointMarkup = values.map((value, index) => `<circle class="non-wait-distribution-point" cx="${positionX(index).toFixed(2)}" cy="${positionY(value).toFixed(2)}" r="3"><title>操作 #${index + 1} · ${formatDuration(value)}</title></circle>`).join("");
+  const yTickValues = Array.from({ length: Math.round(axisMaximum / tickStep) + 1 }, (_, index) => index * tickStep);
+  const yGridLines = yTickValues.map(value => {
+    const y = positionY(value);
+    return `<line class="non-wait-distribution-grid" x1="0" y1="${y.toFixed(2)}" x2="${right}" y2="${y.toFixed(2)}"></line>`;
+  }).join("");
+  const yLabels = yTickValues.map(value => {
+    const y = positionY(value);
+    return `<text class="non-wait-distribution-label" x="36" y="${(y + 3).toFixed(2)}" text-anchor="end">${value}s</text>`;
+  }).join("");
+  const xLabels = values.map((value, index) => `<text class="non-wait-distribution-label" x="${positionX(index).toFixed(2)}" y="184" text-anchor="middle">#${index + 1}</text>`).join("");
+  return `
+    <section class="task-detail-section non-wait-distribution"><div class="task-detail-section-heading"><div><h3>非停顿时间分布</h3><span>${values.length} 个操作样本</span></div><span>按浏览操作顺序</span></div>
+      <div class="active-distribution-wrap non-wait-distribution-wrap">
+        <div class="non-wait-distribution-frame">
+          <svg class="non-wait-distribution-y-axis" viewBox="0 0 42 194" aria-hidden="true">
+            ${yLabels}
+          </svg>
+          <div class="non-wait-distribution-scroll">
+            <svg class="active-distribution non-wait-distribution-chart" style="width:${chartWidth}px" viewBox="0 0 ${chartWidth} 194" role="img" aria-label="非停顿时间分布折线图，横轴为浏览操作，纵轴为非停顿时间">
+              ${yGridLines}
+              <line class="active-distribution-axis" x1="0" y1="${bottom}" x2="${right}" y2="${bottom}"></line>
+              <polyline class="non-wait-distribution-line" points="${points}"></polyline>
+              ${pointMarkup}
+              ${xLabels}
+            </svg>
+          </div>
+        </div>
+        <div class="non-wait-distribution-footer">
+          <div class="active-distribution-legend"><span><i class="non-wait-sample"></i>非停顿耗时</span><span>平均 ${formatDuration(values.reduce((total, value) => total + value, 0) / values.length)}</span><span>最大 ${formatDuration(maximum)}</span></div>
+          <div class="non-wait-distribution-axis-caption">浏览操作</div>
+        </div>
+      </div>
+    </section>`;
+}
+
 function renderTaskTimeline(task, operations, waits) {
   const now = Date.now() / 1000;
   const timelineStart = task.enqueued_at;
@@ -229,38 +288,12 @@ function renderTaskTimeline(task, operations, waits) {
     if (!start || !end || end <= start) return "";
     return `<span class="task-timeline-bar ${className}" style="left:${getPosition(start)}%;width:${getWidth(start, end)}%" title="${escapeHtml(title)}"><span>${escapeHtml(label)}</span></span>`;
   };
-  const renderNonWaitBars = (start, end) => {
-    if (!start || !end || end <= start) return "";
-    const waitIntervals = waits
-      .map(wait => [wait.started_at, wait.started_at + (wait.actual_seconds || 0)])
-      .filter(([waitStart, waitEnd]) => waitStart && waitEnd > start && waitStart < end)
-      .map(([waitStart, waitEnd]) => [Math.max(start, waitStart), Math.min(end, waitEnd)])
-      .sort((left, right) => left[0] - right[0]);
-    const activeIntervals = [];
-    let cursor = start;
-    waitIntervals.forEach(([waitStart, waitEnd]) => {
-      if (waitStart > cursor) activeIntervals.push([cursor, waitStart]);
-      cursor = Math.max(cursor, waitEnd);
-    });
-    if (cursor < end) activeIntervals.push([cursor, end]);
-    return activeIntervals
-      .filter(([activeStart, activeEnd]) => activeEnd - activeStart >= 0.02)
-      .map(([activeStart, activeEnd]) => renderBar(
-        activeStart,
-        activeEnd,
-        "non-wait",
-        "",
-        `非停顿 · ${formatDuration(activeEnd - activeStart)}`,
-      ))
-      .join("");
-  };
   const executionEnd = task.finished_at || now;
   const queueEnd = task.started_at || task.finished_at || now;
   const queueSeconds = task.queue_seconds ?? (queueEnd - task.enqueued_at);
   const executionSeconds = task.finished_at ? (task.execution_seconds ?? (executionEnd - task.started_at)) : executionEnd - task.started_at;
   const queueBar = renderBar(task.enqueued_at, queueEnd, "queue", "排队", `排队 ${formatDuration(queueSeconds)}`);
   const executionBar = task.started_at ? renderBar(task.started_at, executionEnd, "execution", "执行", `执行 ${formatDuration(executionSeconds)}`) : "";
-  const nonWaitBars = task.started_at ? renderNonWaitBars(task.started_at, executionEnd) : "";
   const operationBars = operations.map(operation => {
     const end = operation.finished_at || now;
     return renderBar(operation.started_at, end, "operation", `#${operation.index + 1}`, `浏览操作 #${operation.index + 1} · ${formatDuration(operation.elapsed_seconds ?? (end - operation.started_at))}`);
@@ -270,7 +303,7 @@ function renderTaskTimeline(task, operations, waits) {
     const operationLabel = wait.operation_index === null ? "任务级" : `#${wait.operation_index + 1}`;
     return renderBar(wait.started_at, end, "wait", "", `${waitStageLabels[wait.stage] || wait.stage} · ${operationLabel} · ${formatDuration(wait.actual_seconds)}`);
   }).join("");
-  const segmentCount = operations.length + waits.length + (nonWaitBars ? 1 : 0) + 2;
+  const segmentCount = operations.length + waits.length + 2;
   const trackMinWidth = Math.max(760, Math.min(6000, segmentCount * 18));
   const intervalCount = Math.max(4, Math.round(trackMinWidth / 180));
   const ticks = Array.from({ length: intervalCount + 1 }, (_, index) => {
@@ -283,9 +316,8 @@ function renderTaskTimeline(task, operations, waits) {
         <div class="task-timeline-axis">${ticks}</div>
         <div class="task-timeline-row"><span class="task-timeline-label">任务</span><div class="task-timeline-track">${queueBar}${executionBar}</div></div>
         <div class="task-timeline-row"><span class="task-timeline-label">浏览</span><div class="task-timeline-track">${operationBars || `<span class="task-timeline-empty">暂无操作</span>`}</div></div>
-        <div class="task-timeline-row"><span class="task-timeline-label">非停顿</span><div class="task-timeline-track">${nonWaitBars || `<span class="task-timeline-empty">暂无非停顿</span>`}</div></div>
         <div class="task-timeline-row"><span class="task-timeline-label">停顿</span><div class="task-timeline-track">${waitBars || `<span class="task-timeline-empty">暂无停顿</span>`}</div></div>
-        <div class="task-timeline-legend"><span><i class="queue"></i>排队</span><span><i class="execution"></i>执行</span><span><i class="operation"></i>浏览操作范围</span><span><i class="non-wait"></i>非停顿</span><span><i class="wait"></i>主动停顿</span></div>
+        <div class="task-timeline-legend"><span><i class="queue"></i>排队</span><span><i class="execution"></i>执行</span><span><i class="operation"></i>浏览操作范围</span><span><i class="wait"></i>主动停顿</span></div>
       </div>
     </section>`;
 }
@@ -422,6 +454,7 @@ function renderTaskDetail(task) {
       <div><span>非停顿</span><strong>${formatFinalTaskDuration(task, "active_seconds")}</strong></div>
     </div>
     ${renderTaskTimeline(task, operations, waits)}
+    ${renderNonWaitDistribution(operations)}
     ${renderDurationDistributions(operations, waits)}
     ${task.error ? `<p class="task-error">${escapeHtml(task.error)}</p>` : ""}
     <section class="task-detail-section"><h3>浏览操作</h3>
