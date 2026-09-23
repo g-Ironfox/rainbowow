@@ -8,10 +8,13 @@ const state = {
   paused: false,
   refreshTimer: null,
   editingCrawlerId: null,
-  currentView: location.hash === "#/tasks" ? "tasks" : "fleet",
+  currentView: location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : "fleet",
   taskMarkup: null,
   taskDetailTask: null,
   durationDistributionOptions: {},
+  rawdataItems: [],
+  rawdataNextBefore: null,
+  rawdataMarkup: null,
 };
 
 const elements = {
@@ -48,7 +51,16 @@ const elements = {
   imagePreviewDialog: document.querySelector("#imagePreviewDialog"),
   imagePreview: document.querySelector("#imagePreview"),
   fleetView: document.querySelector("#fleetView"),
+  dataView: document.querySelector("#dataView"),
   tasksView: document.querySelector("#tasksView"),
+  rawdataList: document.querySelector("#rawdataList"),
+  dataEmptyState: document.querySelector("#dataEmptyState"),
+  dataTotalCount: document.querySelector("#dataTotalCount"),
+  dataPagination: document.querySelector("#dataPagination"),
+  loadMoreData: document.querySelector("#loadMoreData"),
+  dataDetailDialog: document.querySelector("#dataDetailDialog"),
+  dataDetailTitle: document.querySelector("#dataDetailTitle"),
+  dataDetailContent: document.querySelector("#dataDetailContent"),
   taskList: document.querySelector("#taskList"),
   taskEmptyState: document.querySelector("#taskEmptyState"),
   taskCrawlerFilter: document.querySelector("#taskCrawlerFilter"),
@@ -106,6 +118,74 @@ function formatDateTime(timestamp) {
     String(date.getSeconds()).padStart(2, "0"),
   ];
   return `${parts[0]}-${parts[1]}-${parts[2]}\n${parts[3]}:${parts[4]}:${parts[5]}`;
+}
+
+function getRawdataTitle(item) {
+  return item.title || item.text || item.name || "未命名帖子";
+}
+
+function getRawdataContent(item) {
+  return item.content || item.desc || item.description || "暂无正文";
+}
+
+function getRawdataTimestamp(item) {
+  if (item.timestamp) return Number(item.timestamp);
+  if (/^[0-9a-f]{24}$/i.test(item._id || "")) return Number.parseInt(item._id.slice(0, 8), 16);
+  return null;
+}
+
+function renderRawdata() {
+  elements.dataEmptyState.hidden = state.rawdataItems.length > 0;
+  elements.dataPagination.hidden = !state.rawdataNextBefore;
+  const markup = state.rawdataItems.map(item => {
+    const title = getRawdataTitle(item);
+    const content = getRawdataContent(item);
+    const interaction = [item.like && `赞 ${item.like}`, item.comments_count].filter(Boolean).join(" · ") || "--";
+    return `
+      <tr tabindex="0" data-rawdata-id="${escapeHtml(item._id)}">
+        <td>${item.img ? `<img class="data-thumbnail" src="${escapeHtml(item.img)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="data-thumbnail-placeholder">无图</span>`}</td>
+        <td><strong class="data-title" title="${escapeHtml(title)}">${escapeHtml(title)}</strong><span class="data-content" title="${escapeHtml(content)}">${escapeHtml(content)}</span></td>
+        <td><span class="data-source">${escapeHtml(item.source || "未知")}</span></td>
+        <td class="data-interaction">${escapeHtml(interaction)}</td>
+        <td class="data-time">${formatDateTime(getRawdataTimestamp(item)).replace("\n", " ")}</td>
+      </tr>`;
+  }).join("");
+  if (markup !== state.rawdataMarkup) {
+    elements.rawdataList.innerHTML = markup;
+    state.rawdataMarkup = markup;
+  }
+}
+
+async function loadRawdata({ append = false, silent = false } = {}) {
+  try {
+    const currentLimit = append ? 30 : Math.max(30, Math.min(100, state.rawdataItems.length));
+    const params = new URLSearchParams({ limit: String(currentLimit) });
+    if (append && state.rawdataNextBefore) params.set("before", state.rawdataNextBefore);
+    const result = await api(`/api/rawdata?${params}`);
+    state.rawdataItems = append
+      ? [...state.rawdataItems, ...result.items].slice(0, 100)
+      : result.items;
+    state.rawdataNextBefore = state.rawdataItems.length < 100 ? result.next_before : null;
+    renderRawdata();
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
+    throw error;
+  }
+}
+
+function openRawdataDetail(item) {
+  const title = getRawdataTitle(item);
+  const postUrl = item.source === "xhs" && item.id
+    ? `https://www.xiaohongshu.com/explore/${encodeURIComponent(item.id)}`
+    : null;
+  elements.dataDetailTitle.textContent = title;
+  elements.dataDetailContent.innerHTML = `
+    <div class="data-detail-summary">
+      ${item.img ? `<img src="${escapeHtml(item.img)}" alt="${escapeHtml(title)}" referrerpolicy="no-referrer">` : ""}
+      <div><p>${escapeHtml(getRawdataContent(item))}</p>${postUrl ? `<a href="${postUrl}" target="_blank" rel="noopener noreferrer">打开原帖</a>` : ""}</div>
+    </div>
+    <section class="data-json-section"><h3>完整记录</h3><pre>${escapeHtml(JSON.stringify(item, null, 2))}</pre></section>`;
+  elements.dataDetailDialog.showModal();
 }
 
 function formatDuration(seconds) {
@@ -472,10 +552,12 @@ function renderTaskDetail(task) {
 function setView(view, updateHash = true) {
   state.currentView = view;
   elements.fleetView.hidden = view !== "fleet";
+  elements.dataView.hidden = view !== "data";
   elements.tasksView.hidden = view !== "tasks";
   document.querySelectorAll(".primary-nav button").forEach(button => button.classList.toggle("active", button.dataset.view === view));
-  if (updateHash) history.replaceState(null, "", view === "tasks" ? "#/tasks" : "#/fleet");
+  if (updateHash) history.replaceState(null, "", `#/${view}`);
   if (view === "tasks") loadTasks(true);
+  if (view === "data") loadRawdata({ silent: true });
 }
 
 function renderLogs(logs) {
@@ -508,10 +590,12 @@ async function loadData(silent = false) {
     renderCrawlers();
     renderLogs(logs);
     elements.rawdataCount.textContent = stats.rawdata_count.toLocaleString("zh-CN");
+    elements.dataTotalCount.textContent = stats.rawdata_count.toLocaleString("zh-CN");
     elements.lastRefresh.textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
     elements.refreshState.textContent = state.paused ? "自动刷新已暂停" : "自动刷新已开启";
     elements.refreshState.classList.remove("error");
     if (state.currentView === "tasks") await loadTasks(true);
+    if (state.currentView === "data") await loadRawdata({ silent: true });
   } catch (error) {
     elements.refreshState.textContent = "连接中断";
     elements.refreshState.classList.add("error");
@@ -598,7 +682,27 @@ document.querySelector(".primary-nav").addEventListener("click", event => {
   const button = event.target.closest("button[data-view]");
   if (button) setView(button.dataset.view);
 });
-window.addEventListener("hashchange", () => setView(location.hash === "#/tasks" ? "tasks" : "fleet", false));
+window.addEventListener("hashchange", () => setView(location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : "fleet", false));
+elements.loadMoreData.addEventListener("click", async () => {
+  elements.loadMoreData.disabled = true;
+  try {
+    await loadRawdata({ append: true });
+  } finally {
+    elements.loadMoreData.disabled = false;
+  }
+});
+elements.rawdataList.addEventListener("click", event => {
+  const row = event.target.closest("tr[data-rawdata-id]");
+  if (!row) return;
+  const item = state.rawdataItems.find(entry => entry._id === row.dataset.rawdataId);
+  if (item) openRawdataDetail(item);
+});
+elements.rawdataList.addEventListener("keydown", event => {
+  if ((event.key === "Enter" || event.key === " ") && event.target.matches("tr[data-rawdata-id]")) {
+    event.preventDefault();
+    event.target.click();
+  }
+});
 elements.taskCrawlerFilter.addEventListener("change", () => loadTasks());
 elements.taskStatusFilter.addEventListener("change", () => loadTasks());
 elements.taskList.addEventListener("click", async event => {

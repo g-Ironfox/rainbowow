@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260922-13">
+  <link rel="stylesheet" href="/static/styles.css?v=20260923-1">
 </head>
 <body>
   <header class="topbar">
@@ -20,6 +20,7 @@
     </div>
     <nav class="primary-nav" aria-label="主导航">
       <button type="button" data-view="fleet" class="active">爬虫实例</button>
+      <button type="button" data-view="data">数据列表</button>
       <button type="button" data-view="tasks">任务分析</button>
     </nav>
     <div class="refresh-panel">
@@ -80,6 +81,25 @@
         <div id="logList" class="log-list"></div>
       </section>
     </div>
+  </main>
+
+  <main id="dataView" class="app-view" hidden>
+    <section class="data-panel">
+      <div class="section-heading data-heading">
+        <div><span class="eyebrow">COLLECTED DATA</span><h1>数据列表</h1></div>
+        <div class="data-heading-count"><span>记录总数</span><strong id="dataTotalCount">0</strong></div>
+      </div>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr><th>帖子</th><th>标题与正文</th><th>来源</th><th>互动</th><th>爬取时间</th></tr></thead>
+          <tbody id="rawdataList"></tbody>
+        </table>
+        <div id="dataEmptyState" class="empty-state" hidden><strong>暂无爬取数据</strong><span>完成浏览任务后，帖子会显示在这里。</span></div>
+      </div>
+      <div id="dataPagination" class="data-pagination" hidden>
+        <button id="loadMoreData" class="secondary-button" type="button">加载更多</button>
+      </div>
+    </section>
   </main>
 
   <main id="tasksView" class="app-view" hidden>
@@ -199,7 +219,14 @@
     </div>
   </dialog>
 
+  <dialog id="dataDetailDialog" class="data-detail-dialog">
+    <div class="data-detail-shell">
+      <div class="dialog-heading"><div><span class="eyebrow">DATA DETAIL</span><h2 id="dataDetailTitle">数据详情</h2></div><button class="close-button" type="button" aria-label="关闭">×</button></div>
+      <div id="dataDetailContent"></div>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260922-13" defer></script>
+  <script src="/static/app.js?v=20260923-1" defer></script>
 </body>
 </html>

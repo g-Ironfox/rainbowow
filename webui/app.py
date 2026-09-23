@@ -93,13 +93,18 @@ class GotoAction(BaseModel):
         return value
 
 
+def serialize_value(value):
+    if isinstance(value, ObjectId):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: serialize_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [serialize_value(item) for item in value]
+    return value
+
+
 def serialize_document(document: dict) -> dict:
-    result = dict(document)
-    result["_id"] = str(result["_id"])
-    for field in ("action_id", "task_id"):
-        if isinstance(result.get(field), ObjectId):
-            result[field] = str(result[field])
-    return result
+    return serialize_value(document)
 
 
 async def crawler_status(redis_client, crawler_id: str) -> str:
@@ -159,6 +164,30 @@ async def health(request: Request):
 async def get_stats(request: Request):
     rawdata_count = await request.app.state.db.rawdata.count_documents({})
     return {"rawdata_count": rawdata_count}
+
+
+@app.get("/api/rawdata")
+async def list_rawdata(
+    request: Request,
+    limit: int = Query(default=30, ge=1, le=100),
+    before: str | None = None,
+):
+    query = {}
+    if before:
+        try:
+            query["_id"] = {"$lt": ObjectId(before)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="无效的数据游标") from exc
+
+    documents = await request.app.state.db.rawdata.find(query).sort("_id", -1).limit(
+        limit + 1
+    ).to_list(limit + 1)
+    has_more = len(documents) > limit
+    documents = documents[:limit]
+    return {
+        "items": [serialize_document(document) for document in documents],
+        "next_before": str(documents[-1]["_id"]) if has_more and documents else None,
+    }
 
 
 @app.get("/api/crawlers")

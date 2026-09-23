@@ -564,19 +564,16 @@ class XhsCrawler(Crawler):
                 await content.wait_for(timeout=10000, state="visible")
                 await self.wait("wait_detail_open_multiplier", 0.6)
                 await page.screenshot(path=f"log/{self.cid}/{datetime.now().strftime('%Y/%m/%d/%H-%M-%S')}.jpg",type="jpeg",quality=50)
-                try:
-                    title = page.locator("#detail-title")
-                    bottom = page.locator(".bottom-container")
+                title = page.locator("#detail-title")
+                bottom = page.locator(".bottom-container")
 
-                    comments_container = page.locator(".comments-container")
-                    try:
-                        comments_count = await comments_container.locator(".total").text_content()
-                    except:
-                        comments_count = "共 0 条评论 "
-                    x={"comments_count": comments_count, "content": await content.text_content(), "title": await title.text_content(), "bottom": await bottom.text_content()}
-                    p = {**p, **x,"source": "xhs", "timestamp": time.time()}
-                except Exception as e:
-                    await self.log("Error",f"Grab {candidate_index} Failed: {e}",screenshot_page=page)
+                comments_container = page.locator(".comments-container")
+                try:
+                    comments_count = await comments_container.locator(".total").text_content()
+                except Exception:
+                    comments_count = "共 0 条评论 "
+                x={"comments_count": comments_count, "content": await content.text_content(), "title": await title.text_content(), "bottom": await bottom.text_content()}
+                p = {**p, **x,"source": "xhs", "timestamp": time.time()}
                 await self.ensure_task_active()
                 await DB.rawdata_db.insert_one(p)
                 await DB.task_db.update_one(
