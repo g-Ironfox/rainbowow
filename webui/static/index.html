@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260923-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260923-5">
 </head>
 <body>
   <header class="topbar">
@@ -21,6 +21,7 @@
     <nav class="primary-nav" aria-label="主导航">
       <button type="button" data-view="fleet" class="active">爬虫实例</button>
       <button type="button" data-view="data">数据列表</button>
+      <button type="button" data-view="images">图片缓存</button>
       <button type="button" data-view="tasks">任务分析</button>
     </nav>
     <div class="refresh-panel">
@@ -99,6 +100,18 @@
       <div id="dataPagination" class="data-pagination" hidden>
         <button id="loadMoreData" class="secondary-button" type="button">加载更多</button>
       </div>
+    </section>
+  </main>
+
+  <main id="imagesView" class="app-view" hidden>
+    <section class="image-cache-panel">
+      <div class="section-heading image-cache-heading">
+        <div><span class="eyebrow">IMAGE CACHE</span><h1>图片缓存</h1></div>
+        <div class="data-heading-count"><span>缓存图片</span><strong id="imageCacheCount">0</strong></div>
+      </div>
+      <div id="imageCacheGrid" class="image-cache-grid"></div>
+      <div id="imageCacheEmptyState" class="empty-state" hidden><strong>暂无缓存图片</strong><span>启用“Mongo 缓存”策略后，crawler 加载过的图片会显示在这里。</span></div>
+      <div id="imageCachePagination" class="data-pagination" hidden><button id="loadMoreImages" class="secondary-button" type="button">加载更多</button></div>
     </section>
   </main>
 
@@ -228,6 +241,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260923-4" defer></script>
+  <script src="/static/app.js?v=20260923-8" defer></script>
 </body>
 </html>

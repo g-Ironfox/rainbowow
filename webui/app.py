@@ -209,6 +209,41 @@ async def get_cached_image(image_key: str, request: Request):
     )
 
 
+@app.get("/api/image-cache")
+async def list_cached_images(
+    request: Request,
+    limit: int = Query(default=60, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    total = await request.app.state.db.image_cache.count_documents({})
+    documents = await request.app.state.db.image_cache.aggregate([
+        {
+            "$project": {
+                "url": 1,
+                "content_type": 1,
+                "created_at": 1,
+                "hit_count": 1,
+                "size": {"$binarySize": "$data"},
+            }
+        },
+        {"$sort": {"created_at": -1}},
+        {"$skip": offset},
+        {"$limit": limit},
+    ]).to_list(limit)
+    items = []
+    for document in documents:
+        item = serialize_document(document)
+        item["image_url"] = f"/api/images/{item['_id']}"
+        item["hit_count"] = item.get("hit_count", 0)
+        items.append(item)
+    return {
+        "items": items,
+        "total": total,
+        "offset": offset,
+        "has_more": offset + len(items) < total,
+    }
+
+
 @app.delete("/api/rawdata/{data_id}")
 async def delete_rawdata(data_id: str, request: Request):
     try:

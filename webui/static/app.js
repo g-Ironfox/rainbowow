@@ -8,7 +8,7 @@ const state = {
   paused: false,
   refreshTimer: null,
   editingCrawlerId: null,
-  currentView: location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : "fleet",
+  currentView: location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : location.hash === "#/images" ? "images" : "fleet",
   taskMarkup: null,
   taskDetailTask: null,
   durationDistributionOptions: {},
@@ -16,6 +16,9 @@ const state = {
   rawdataNextBefore: null,
   rawdataMarkup: null,
   selectedRawdataId: null,
+  imageCacheItems: [],
+  imageCacheNextOffset: 0,
+  imageCacheTotal: 0,
 };
 
 const elements = {
@@ -53,6 +56,7 @@ const elements = {
   imagePreview: document.querySelector("#imagePreview"),
   fleetView: document.querySelector("#fleetView"),
   dataView: document.querySelector("#dataView"),
+  imagesView: document.querySelector("#imagesView"),
   tasksView: document.querySelector("#tasksView"),
   rawdataList: document.querySelector("#rawdataList"),
   dataEmptyState: document.querySelector("#dataEmptyState"),
@@ -75,6 +79,11 @@ const elements = {
   taskDetailTitle: document.querySelector("#taskDetailTitle"),
   taskDetailContent: document.querySelector("#taskDetailContent"),
   toast: document.querySelector("#toast"),
+  imageCacheGrid: document.querySelector("#imageCacheGrid"),
+  imageCacheEmptyState: document.querySelector("#imageCacheEmptyState"),
+  imageCacheCount: document.querySelector("#imageCacheCount"),
+  imageCachePagination: document.querySelector("#imageCachePagination"),
+  loadMoreImages: document.querySelector("#loadMoreImages"),
 };
 
 const statusLabels = { running: "运行中", idle: "空闲", stopped: "已停止", error: "状态异常" };
@@ -185,6 +194,80 @@ async function loadRawdata({ append = false, refresh = false, silent = false } =
       state.rawdataNextBefore = result.next_before;
     }
     renderRawdata();
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
+    throw error;
+  }
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderImageUrlDetails(item, expandedIds) {
+  const value = item.url;
+  if (!value) return `<span class="image-cache-url-empty">无来源 URL</span>`;
+  try {
+    const parsed = new URL(value);
+    const label = `${parsed.hostname}${parsed.pathname}`;
+    const parameters = [...parsed.searchParams.entries()];
+    return `
+      <details class="image-cache-url" data-image-url-id="${escapeHtml(item._id)}"${expandedIds.has(item._id) ? " open" : ""}>
+        <summary title="${escapeHtml(value)}">${escapeHtml(label)}</summary>
+        <a href="${escapeHtml(value)}" target="_blank" rel="noopener noreferrer">${escapeHtml(value)}</a>
+        ${parameters.length ? `<dl>${parameters.map(([key, parameterValue]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(parameterValue)}</dd></div>`).join("")}</dl>` : `<span class="image-cache-url-empty">无查询参数</span>`}
+      </details>`;
+  } catch {
+    return `<div class="image-cache-url-raw">${escapeHtml(value)}</div>`;
+  }
+}
+
+function renderImageCache() {
+  const expandedIds = new Set(
+    [...elements.imageCacheGrid.querySelectorAll("details[open][data-image-url-id]")]
+      .map(details => details.dataset.imageUrlId),
+  );
+  const scrollTop = elements.imageCacheGrid.scrollTop;
+  elements.imageCacheCount.textContent = state.imageCacheTotal.toLocaleString("zh-CN");
+  elements.imageCacheEmptyState.hidden = state.imageCacheItems.length > 0;
+  elements.imageCachePagination.hidden = state.imageCacheItems.length === 0 || state.imageCacheNextOffset >= state.imageCacheTotal;
+  elements.imageCacheGrid.innerHTML = state.imageCacheItems.map(item => `
+    <article class="image-cache-card">
+      <a href="${escapeHtml(item.image_url)}" target="_blank" rel="noopener noreferrer" class="image-cache-preview">
+        <img src="${escapeHtml(item.image_url)}" alt="缓存图片" loading="lazy">
+      </a>
+      <div class="image-cache-meta">
+        <strong>${Number(item.hit_count || 0).toLocaleString("zh-CN")} 次命中</strong>
+        <span>${escapeHtml(item.content_type || "未知类型")} · ${formatBytes(item.size)}</span>
+        <small>${formatDateTime(item.created_at).replace("\n", " ")}</small>
+        ${renderImageUrlDetails(item, expandedIds)}
+      </div>
+    </article>`).join("");
+  elements.imageCacheGrid.scrollTop = scrollTop;
+}
+
+async function loadImageCache({ append = false, refresh = false, silent = false } = {}) {
+  try {
+    const offset = append ? state.imageCacheNextOffset : 0;
+    const result = await api(`/api/image-cache?limit=100&offset=${offset}`);
+    if (append) {
+      const existingIds = new Set(state.imageCacheItems.map(item => item._id));
+      state.imageCacheItems = [...state.imageCacheItems, ...result.items.filter(item => !existingIds.has(item._id))];
+    } else if (refresh && state.imageCacheItems.length) {
+      const latestIds = new Set(result.items.map(item => item._id));
+      state.imageCacheItems = [
+        ...result.items,
+        ...state.imageCacheItems.filter(item => !latestIds.has(item._id)),
+      ];
+    } else {
+      state.imageCacheItems = result.items;
+    }
+    state.imageCacheNextOffset = state.imageCacheItems.length;
+    state.imageCacheTotal = result.total;
+    renderImageCache();
   } catch (error) {
     if (!silent) showToast(error.message, true);
     throw error;
@@ -602,11 +685,13 @@ function setView(view, updateHash = true) {
   state.currentView = view;
   elements.fleetView.hidden = view !== "fleet";
   elements.dataView.hidden = view !== "data";
+  elements.imagesView.hidden = view !== "images";
   elements.tasksView.hidden = view !== "tasks";
   document.querySelectorAll(".primary-nav button").forEach(button => button.classList.toggle("active", button.dataset.view === view));
   if (updateHash) history.replaceState(null, "", `#/${view}`);
   if (view === "tasks") loadTasks(true);
   if (view === "data") loadRawdata({ silent: true });
+  if (view === "images") loadImageCache({ silent: true });
 }
 
 function renderLogs(logs) {
@@ -645,6 +730,7 @@ async function loadData(silent = false) {
     elements.refreshState.classList.remove("error");
     if (state.currentView === "tasks") await loadTasks(true);
     if (state.currentView === "data") await loadRawdata({ refresh: true, silent: true });
+    if (state.currentView === "images") await loadImageCache({ refresh: true, silent: true });
   } catch (error) {
     elements.refreshState.textContent = "连接中断";
     elements.refreshState.classList.add("error");
@@ -731,13 +817,21 @@ document.querySelector(".primary-nav").addEventListener("click", event => {
   const button = event.target.closest("button[data-view]");
   if (button) setView(button.dataset.view);
 });
-window.addEventListener("hashchange", () => setView(location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : "fleet", false));
+window.addEventListener("hashchange", () => setView(location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : location.hash === "#/images" ? "images" : "fleet", false));
 elements.loadMoreData.addEventListener("click", async () => {
   elements.loadMoreData.disabled = true;
   try {
     await loadRawdata({ append: true });
   } finally {
     elements.loadMoreData.disabled = false;
+  }
+});
+elements.loadMoreImages.addEventListener("click", async () => {
+  elements.loadMoreImages.disabled = true;
+  try {
+    await loadImageCache({ append: true });
+  } finally {
+    elements.loadMoreImages.disabled = false;
   }
 });
 elements.rawdataList.addEventListener("click", event => {

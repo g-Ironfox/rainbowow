@@ -145,6 +145,10 @@ class Crawler:
 
             cached_image = await DB.image_cache_db.find_one({"url": request.url})
             if cached_image:
+                await DB.image_cache_db.update_one(
+                    {"_id": cached_image["_id"]},
+                    {"$inc": {"hit_count": 1}},
+                )
                 await route.fulfill(
                     status=200,
                     content_type=cached_image["content_type"],
@@ -178,6 +182,7 @@ class Crawler:
                     "content_type": content_type,
                     "data": image_data,
                     "created_at": time.time(),
+                    "hit_count": 0,
                 }
             },
             upsert=True,
@@ -190,6 +195,10 @@ class Crawler:
             return None
         cached_image = await DB.image_cache_db.find_one({"url": url}, {"_id": 1})
         if cached_image:
+            await DB.image_cache_db.update_one(
+                {"_id": cached_image["_id"]},
+                {"$inc": {"hit_count": 1}},
+            )
             return str(cached_image["_id"])
 
         response = await page.context.request.get(
