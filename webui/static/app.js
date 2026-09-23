@@ -8,7 +8,7 @@ const state = {
   paused: false,
   refreshTimer: null,
   editingCrawlerId: null,
-  currentView: location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : location.hash === "#/images" ? "images" : "fleet",
+  currentView: location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : location.hash === "#/images" ? "images" : location.hash === "#/analysis" ? "analysis" : "fleet",
   taskMarkup: null,
   taskDetailTask: null,
   durationDistributionOptions: {},
@@ -58,6 +58,13 @@ const elements = {
   dataView: document.querySelector("#dataView"),
   imagesView: document.querySelector("#imagesView"),
   tasksView: document.querySelector("#tasksView"),
+  analysisView: document.querySelector("#analysisView"),
+  analysisContent: document.querySelector("#analysisContent"),
+  analysisEmptyState: document.querySelector("#analysisEmptyState"),
+  analysisCrawlerFilter: document.querySelector("#analysisCrawlerFilter"),
+  analysisCount: document.querySelector("#analysisCount"),
+  analysisZoom: document.querySelector("#analysisZoom"),
+  analysisZoomValue: document.querySelector("#analysisZoomValue"),
   rawdataList: document.querySelector("#rawdataList"),
   dataEmptyState: document.querySelector("#dataEmptyState"),
   dataTotalCount: document.querySelector("#dataTotalCount"),
@@ -164,7 +171,7 @@ function renderRawdata() {
       <tr tabindex="0" data-rawdata-id="${escapeHtml(item._id)}">
         <td>${imageUrl ? `<img class="data-thumbnail" src="${escapeHtml(imageUrl)}" alt="" loading="lazy">` : `<span class="data-thumbnail-placeholder">无图</span>`}</td>
         <td><strong class="data-title" title="${escapeHtml(title)}">${escapeHtml(title)}</strong><span class="data-content" title="${escapeHtml(content)}">${escapeHtml(content)}</span></td>
-        <td><span class="data-source">${escapeHtml(item.source || "未知")}</span></td>
+        <td><span class="data-source">${escapeHtml(item.crawler_id || item.source || "未知")}</span><small class="data-source-detail">${item.task_id ? "任务关联" : escapeHtml(item.source || "历史数据")}</small></td>
         <td class="data-interaction">${escapeHtml(interaction)}</td>
         <td class="data-time">${formatDateTime(getRawdataTimestamp(item)).replace("\n", " ")}</td>
       </tr>`;
@@ -565,13 +572,17 @@ function renderCrawlers() {
 
   const selected = elements.logFilter.value;
   const selectedTaskCrawler = elements.taskCrawlerFilter.value;
+  const selectedAnalysisCrawler = elements.analysisCrawlerFilter.value;
   const filterMarkup = `<option value="">全部爬虫</option>${state.crawlers.map(crawler => `<option value="${escapeHtml(crawler.crawler_id)}">${escapeHtml(crawler.crawler_id)}</option>`).join("")}`;
   if (filterMarkup !== state.filterMarkup) {
     elements.logFilter.innerHTML = filterMarkup;
     elements.taskCrawlerFilter.innerHTML = filterMarkup;
+    elements.analysisCrawlerFilter.innerHTML = filterMarkup;
     state.filterMarkup = filterMarkup;
     if (state.crawlers.some(crawler => crawler.crawler_id === selected)) elements.logFilter.value = selected;
     if (state.crawlers.some(crawler => crawler.crawler_id === selectedTaskCrawler)) elements.taskCrawlerFilter.value = selectedTaskCrawler;
+    if (state.crawlers.some(crawler => crawler.crawler_id === selectedAnalysisCrawler)) elements.analysisCrawlerFilter.value = selectedAnalysisCrawler;
+    if (!selectedAnalysisCrawler && state.crawlers.length === 1) elements.analysisCrawlerFilter.value = state.crawlers[0].crawler_id;
   }
 }
 
@@ -599,6 +610,109 @@ function renderTasks(tasks, summary) {
   if (markup !== state.taskMarkup) {
     elements.taskList.innerHTML = markup;
     state.taskMarkup = markup;
+  }
+}
+
+function renderAnalysisHistogram(values, title, color) {
+  const valid = values.map(Number).filter(value => Number.isFinite(value) && value >= 0);
+  if (!valid.length) return `<section class="analysis-chart"><h3>${title}</h3><p class="analysis-empty">暂无数据</p></section>`;
+  const maximum = Math.max(...valid, 1);
+  const binSize = Math.max(1, Math.ceil(maximum / 5));
+  const bins = Array.from({ length: Math.max(1, Math.ceil(maximum / binSize)) }, () => 0);
+  valid.forEach(value => bins[Math.min(bins.length - 1, Math.floor(value / binSize))] += 1);
+  const peak = Math.max(...bins, 1);
+  const bars = bins.map((count, index) => {
+    const height = count / peak * 132;
+    const x = 36 + index * (320 / bins.length);
+    return `<rect x="${x.toFixed(1)}" y="${156 - height.toFixed(1)}" width="${Math.max(4, 300 / bins.length).toFixed(1)}" height="${height.toFixed(1)}" fill="${color}"><title>${index * binSize}s - ${(index + 1) * binSize}s：${count} 次</title></rect>`;
+  }).join("");
+  return `<section class="analysis-chart"><h3>${title}</h3><svg viewBox="0 0 360 190" role="img" aria-label="${title}"><line class="analysis-axis" x1="30" y1="156" x2="342" y2="156"></line>${bars}<text x="30" y="178">0s</text><text x="342" y="178" text-anchor="end">${Math.ceil(maximum)}s</text></svg><span class="analysis-chart-note">${valid.length} 个任务样本 · 平均 ${formatDuration(valid.reduce((sum, value) => sum + value, 0) / valid.length)}</span></section>`;
+}
+
+function renderAnalysisTrend(tasks) {
+  const values = tasks.map(task => [Number(task.execution_seconds) || 0, Number(task.wait_seconds) || 0, Number(task.active_seconds) || 0]);
+  if (!values.length) return `<section class="analysis-chart analysis-trend"><h3>任务耗时趋势</h3><p class="analysis-empty">暂无数据</p></section>`;
+  const maximum = Math.max(...values.flat(), 1);
+  const x = index => 32 + (index / Math.max(1, values.length - 1)) * 306;
+  const y = value => 154 - value / maximum * 124;
+  const line = (index, color, label) => {
+    const points = values.map((entry, pointIndex) => `${x(pointIndex).toFixed(1)},${y(entry[index]).toFixed(1)}`).join(" ");
+    const dots = values.map((entry, pointIndex) => `<circle cx="${x(pointIndex).toFixed(1)}" cy="${y(entry[index]).toFixed(1)}" r="3" fill="${color}"><title>${label} #${pointIndex + 1}：${formatDuration(entry[index])}</title></circle>`).join("");
+    return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"></polyline>${dots}`;
+  };
+  return `<section class="analysis-chart analysis-trend"><h3>任务耗时趋势</h3><svg viewBox="0 0 360 190" role="img" aria-label="任务耗时趋势"><line class="analysis-axis" x1="30" y1="154" x2="342" y2="154"></line>${line(0, "#3d72bd", "执行")}${line(1, "#e14b4b", "停顿")}${line(2, "#14875b", "非停顿")}</svg><div class="analysis-legend"><span><i style="background:#3d72bd"></i>执行</span><span><i style="background:#e14b4b"></i>停顿</span><span><i style="background:#14875b"></i>非停顿</span></div></section>`;
+}
+
+function renderCrawlerAnalysis(result) {
+  const tasks = result.tasks || [];
+  const timelineScrollLeft = elements.analysisContent.querySelector(".analysis-timeline-wrap")?.scrollLeft || 0;
+  elements.analysisEmptyState.hidden = tasks.length > 0;
+  if (!tasks.length) {
+    elements.analysisContent.innerHTML = "";
+    return;
+  }
+  const timing = result.current_timing || {};
+  elements.analysisContent.innerHTML = `
+    <div class="analysis-meta"><strong>${escapeHtml(result.crawler_id)}</strong><span>显示最近 ${tasks.length} 次任务</span><span>当前基准停顿 ${formatDuration(Number(timing.wait_base_seconds) || 0)} · 泛化率 ${Number(timing.wait_random_rate || 0).toFixed(1)}</span></div>
+    <section class="analysis-chart analysis-gantt"><h3>近任务操作甘特图</h3>${renderAnalysisTimeline(tasks)}</section>
+    <div class="analysis-chart-grid">${renderAnalysisHistogram(tasks.map(task => task.execution_seconds), "执行时间直方图", "#3d72bd")}${renderAnalysisHistogram(tasks.map(task => task.wait_seconds), "停顿时间直方图", "#e14b4b")}${renderAnalysisTrend(tasks)}</div>`;
+  elements.analysisContent.querySelector(".analysis-timeline-wrap").scrollLeft = timelineScrollLeft;
+}
+
+function renderAnalysisTimeline(tasks) {
+  const segments = tasks.map((task, taskIndex) => {
+    const start = Number(task.started_at || task.enqueued_at) || 0;
+    const end = Number(task.finished_at) || start + (Number(task.execution_seconds) || 1);
+    return { task, taskIndex, start, end, operations: task.operations || [], waits: task.waits || [] };
+  });
+  const firstTime = Math.min(...segments.map(segment => segment.start));
+  const lastTime = Math.max(...segments.map(segment => segment.end));
+  const totalDuration = Math.max(lastTime - firstTime, 1);
+  const activityCount = segments.reduce((total, segment) => total + segment.operations.length + segment.waits.length, 0);
+  const zoom = Number(elements.analysisZoom.value) || 1;
+  const trackWidth = Math.max(1100, activityCount * 24, totalDuration * 4) * zoom;
+  const position = timestamp => `${((timestamp - firstTime) / totalDuration * trackWidth).toFixed(1)}px`;
+  const bar = (start, end, className, title, label = "") => {
+    const left = Math.max(0, start - firstTime);
+    const width = Math.max(2, end - start);
+    return `<span class="analysis-timeline-bar ${className}" style="left:${position(firstTime + left)};width:${(width / totalDuration * trackWidth).toFixed(1)}px" title="${escapeHtml(title)}"><span>${escapeHtml(label)}</span></span>`;
+  };
+  const taskBars = segments.map(segment => bar(segment.start, segment.end, "execution", `任务 #${segment.taskIndex + 1} · ${formatDuration(segment.end - segment.start)}`, `#${segment.taskIndex + 1}`)).join("");
+  const operationBars = segments.flatMap(segment => segment.operations.map(operation => {
+    const start = Number(operation.started_at) || segment.start;
+    const end = Number(operation.finished_at) || start + (Number(operation.elapsed_seconds) || 0);
+    return bar(start, end, "operation", `任务 #${segment.taskIndex + 1} · 操作 #${operation.index + 1} · ${formatDuration(end - start)}`, `#${operation.index + 1}`);
+  })).join("");
+  const waitBars = segments.flatMap(segment => segment.waits.map(wait => {
+    const start = Number(wait.started_at) || segment.start;
+    const end = start + (Number(wait.actual_seconds) || 0);
+    return bar(start, end, "wait", `任务 #${segment.taskIndex + 1} · ${waitStageLabels[wait.stage] || wait.stage} · ${formatDuration(end - start)}`);
+  })).join("");
+  const tickCount = Math.max(2, Math.min(10, Math.floor(trackWidth / 150)));
+  const gridStep = trackWidth / tickCount;
+  const ticks = Array.from({ length: tickCount + 1 }, (_, index) => {
+    const timestamp = firstTime + totalDuration * index / tickCount;
+    return `<span class="analysis-timeline-tick" style="left:${(trackWidth * index / tickCount).toFixed(1)}px"><small>${formatTime(timestamp)}</small></span>`;
+  }).join("");
+  const boundaries = segments.map((segment, index) => `<span class="analysis-timeline-boundary" style="left:${position(segment.start)}" title="任务 #${index + 1} 开始"><b>#${index + 1}</b></span>`).join("");
+  const trackStyle = `width:${trackWidth}px;--analysis-grid-step:${gridStep.toFixed(1)}px`;
+  return `<div class="analysis-timeline-wrap"><div class="analysis-timeline-axis-row"><span class="analysis-timeline-label"></span><div class="analysis-timeline-axis" style="width:${trackWidth}px">${ticks}${boundaries}</div></div><div class="analysis-timeline-row"><span class="analysis-timeline-label">任务</span><div class="analysis-timeline-track" style="${trackStyle}">${taskBars}</div></div><div class="analysis-timeline-row"><span class="analysis-timeline-label">浏览</span><div class="analysis-timeline-track" style="${trackStyle}">${operationBars || `<small>暂无操作</small>`}</div></div><div class="analysis-timeline-row"><span class="analysis-timeline-label">停顿</span><div class="analysis-timeline-track" style="${trackStyle}">${waitBars || `<small>暂无停顿</small>`}</div></div><div class="analysis-legend"><span><i class="queue"></i>排队 / 空档</span><span><i class="execution"></i>执行</span><span><i class="operation"></i>浏览操作范围</span><span><i class="wait"></i>主动停顿</span></div></div>`;
+}
+
+async function loadCrawlerAnalysis(silent = false) {
+  const crawlerId = elements.analysisCrawlerFilter.value;
+  if (!crawlerId) {
+    elements.analysisContent.innerHTML = "";
+    elements.analysisEmptyState.hidden = false;
+    return;
+  }
+  try {
+    const count = Math.max(1, Math.min(20, Number(elements.analysisCount.value) || 3));
+    elements.analysisCount.value = count;
+    renderCrawlerAnalysis(await api(`/api/crawlers/${encodeURIComponent(crawlerId)}/analysis?count=${count}`));
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
+    throw error;
   }
 }
 
@@ -665,6 +779,7 @@ function renderTaskDetail(task) {
       <div><span>主动停顿</span><strong>${formatDuration(task.wait_seconds)}</strong></div>
       <div><span>非停顿</span><strong>${formatFinalTaskDuration(task, "active_seconds")}</strong></div>
     </div>
+    <section class="task-detail-section task-timing-snapshot"><div class="task-detail-section-heading"><h3>停顿参数快照</h3><span>${task.timing_config ? "任务入队时记录" : "历史任务无快照"}</span></div>${task.timing_config ? `<div class="timing-snapshot-grid"><span>基准 ${formatDuration(Number(task.timing_config.wait_base_seconds) || 0)}</span><span>泛化率 ${Number(task.timing_config.wait_random_rate || 0).toFixed(1)}</span><span>首次 ${Number(task.timing_config.wait_initial_multiplier || 0).toFixed(1)}x</span><span>滚动 ${Number(task.timing_config.wait_scroll_multiplier || 0).toFixed(1)}x</span><span>帖子 ${Number(task.timing_config.wait_post_multiplier || 0).toFixed(1)}x</span><span>详情开 ${Number(task.timing_config.wait_detail_open_multiplier || 0).toFixed(1)}x</span><span>详情关 ${Number(task.timing_config.wait_detail_close_multiplier || 0).toFixed(1)}x</span><span>异常 ${Number(task.timing_config.wait_error_multiplier || 0).toFixed(1)}x</span></div>` : ""}</section>
     ${renderTaskTimeline(task, operations, waits)}
     ${renderNonWaitDistribution(operations)}
     ${renderDurationDistributions(operations, waits)}
@@ -687,11 +802,13 @@ function setView(view, updateHash = true) {
   elements.dataView.hidden = view !== "data";
   elements.imagesView.hidden = view !== "images";
   elements.tasksView.hidden = view !== "tasks";
+  elements.analysisView.hidden = view !== "analysis";
   document.querySelectorAll(".primary-nav button").forEach(button => button.classList.toggle("active", button.dataset.view === view));
   if (updateHash) history.replaceState(null, "", `#/${view}`);
   if (view === "tasks") loadTasks(true);
   if (view === "data") loadRawdata({ silent: true });
   if (view === "images") loadImageCache({ silent: true });
+  if (view === "analysis") loadCrawlerAnalysis(true);
 }
 
 function renderLogs(logs) {
@@ -731,6 +848,7 @@ async function loadData(silent = false) {
     if (state.currentView === "tasks") await loadTasks(true);
     if (state.currentView === "data") await loadRawdata({ refresh: true, silent: true });
     if (state.currentView === "images") await loadImageCache({ refresh: true, silent: true });
+    if (state.currentView === "analysis") await loadCrawlerAnalysis(true);
   } catch (error) {
     elements.refreshState.textContent = "连接中断";
     elements.refreshState.classList.add("error");
@@ -817,7 +935,7 @@ document.querySelector(".primary-nav").addEventListener("click", event => {
   const button = event.target.closest("button[data-view]");
   if (button) setView(button.dataset.view);
 });
-window.addEventListener("hashchange", () => setView(location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : location.hash === "#/images" ? "images" : "fleet", false));
+window.addEventListener("hashchange", () => setView(location.hash === "#/tasks" ? "tasks" : location.hash === "#/data" ? "data" : location.hash === "#/images" ? "images" : location.hash === "#/analysis" ? "analysis" : "fleet", false));
 elements.loadMoreData.addEventListener("click", async () => {
   elements.loadMoreData.disabled = true;
   try {
@@ -869,6 +987,12 @@ elements.deleteRawdata.addEventListener("click", async () => {
 });
 elements.taskCrawlerFilter.addEventListener("change", () => loadTasks());
 elements.taskStatusFilter.addEventListener("change", () => loadTasks());
+elements.analysisCrawlerFilter.addEventListener("change", () => loadCrawlerAnalysis());
+elements.analysisCount.addEventListener("change", () => loadCrawlerAnalysis());
+elements.analysisZoom.addEventListener("input", () => {
+  elements.analysisZoomValue.textContent = `${Number(elements.analysisZoom.value).toFixed(1)}×`;
+  if (state.currentView === "analysis") loadCrawlerAnalysis(true);
+});
 elements.taskList.addEventListener("click", async event => {
   const deleteButton = event.target.closest("button[data-delete-task]");
   if (deleteButton) {

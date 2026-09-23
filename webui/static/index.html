@@ -23,6 +23,7 @@
       <button type="button" data-view="data">数据列表</button>
       <button type="button" data-view="images">图片缓存</button>
       <button type="button" data-view="tasks">任务分析</button>
+      <button type="button" data-view="analysis">实例分析</button>
     </nav>
     <div class="refresh-panel">
       <div class="sync-meta">
@@ -147,6 +148,21 @@
     </section>
   </main>
 
+  <main id="analysisView" class="app-view" hidden>
+    <section class="analysis-panel">
+      <div class="section-heading analysis-heading">
+        <div><span class="eyebrow">RISK REVIEW</span><h1>爬虫实例分析</h1></div>
+        <div class="analysis-controls">
+          <label>实例<select id="analysisCrawlerFilter" aria-label="选择分析实例"><option value="">全部实例</option></select></label>
+          <label>近 N 次<input id="analysisCount" type="number" min="1" max="20" step="1" value="3" aria-label="近 N 次任务"></label>
+          <label class="analysis-zoom-control">横向缩放 <span id="analysisZoomValue">1.0×</span><input id="analysisZoom" type="range" min="0.5" max="4" step="0.1" value="1" aria-label="甘特图横向缩放"></label>
+        </div>
+      </div>
+      <div id="analysisEmptyState" class="empty-state" hidden><strong>暂无可分析任务</strong><span>先让实例完成一次浏览任务。</span></div>
+      <div id="analysisContent" class="analysis-content"></div>
+    </section>
+  </main>
+
   <dialog id="crawlerDialog">
     <form id="createForm" method="dialog">
       <div class="dialog-heading"><div><span id="crawlerDialogEyebrow" class="eyebrow">NEW INSTANCE</span><h2 id="crawlerDialogTitle">新建爬虫</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></div>
@@ -241,6 +257,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="/static/app.js?v=20260923-8" defer></script>
+  <script src="/static/app.js?v=20260923-9" defer></script>
 </body>
 </html>

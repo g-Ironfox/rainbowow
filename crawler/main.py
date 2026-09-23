@@ -595,7 +595,14 @@ class XhsCrawler(Crawler):
                 except Exception:
                     comments_count = "共 0 条评论 "
                 x={"comments_count": comments_count, "content": await content.text_content(), "title": await title.text_content(), "bottom": await bottom.text_content()}
-                p = {**p, **x,"source": "xhs", "timestamp": time.time()}
+                p = {
+                    **p,
+                    **x,
+                    "source": "xhs",
+                    "crawler_id": self.cid,
+                    "task_id": self.current_task_id,
+                    "timestamp": time.time(),
+                }
                 await self.ensure_task_active()
                 await DB.rawdata_db.insert_one(p)
                 await DB.task_db.update_one(

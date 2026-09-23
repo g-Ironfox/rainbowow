@@ -15,6 +15,17 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 BASE_DIR = Path(__file__).resolve().parent
 
+WAIT_TIMING_DEFAULTS = {
+    "wait_base_seconds": 5,
+    "wait_random_rate": 0.6,
+    "wait_initial_multiplier": 1.0,
+    "wait_scroll_multiplier": 0.8,
+    "wait_post_multiplier": 0.4,
+    "wait_detail_open_multiplier": 0.6,
+    "wait_detail_close_multiplier": 0.6,
+    "wait_error_multiplier": 0.6,
+}
+
 
 class ProxyConfig(BaseModel):
     url: str = Field(default="", max_length=2048)
@@ -375,13 +386,17 @@ async def enqueue_action(
 
 @app.post("/api/crawlers/{crawler_id}/actions/surface")
 async def surface(crawler_id: str, request: Request):
-    await require_crawler(request, crawler_id)
+    crawler = await require_crawler(request, crawler_id)
     enqueued_at = time.time()
     task_document = {
         "crawler_id": crawler_id,
         "type": "surface",
         "status": "queued",
         "enqueued_at": enqueued_at,
+        "timing_config": {
+            field: crawler.get(field, default)
+            for field, default in WAIT_TIMING_DEFAULTS.items()
+        },
         "wait_count": 0,
         "wait_seconds": 0,
         "execution_seconds": 0,
@@ -558,6 +573,28 @@ async def task_summary(
         if value is None:
             summary[field] = 0
     return summary
+
+
+@app.get("/api/crawlers/{crawler_id}/analysis")
+async def crawler_analysis(
+    crawler_id: str,
+    request: Request,
+    count: int = Query(default=3, ge=1, le=20),
+):
+    crawler = await require_crawler(request, crawler_id)
+    tasks = await request.app.state.db.task.find(
+        {"crawler_id": crawler_id}
+    ).sort("enqueued_at", -1).limit(count).to_list(count)
+    current_timing = {
+        field: crawler.get(field, default)
+        for field, default in WAIT_TIMING_DEFAULTS.items()
+    }
+    return {
+        "crawler_id": crawler_id,
+        "requested_count": count,
+        "current_timing": current_timing,
+        "tasks": [serialize_document(task) for task in reversed(tasks)],
+    }
 
 
 @app.get("/api/tasks/{task_id}")
